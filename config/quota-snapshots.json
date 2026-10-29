@@ -1,0 +1,27 @@
+{
+  "source": "seed",
+  "cells": [
+    {
+      "symbol": "016452",
+      "shareClass": "A",
+      "channelKind": "agency",
+      "status": "limited",
+      "dailyLimit": 500,
+      "quotaScope": "016452:A:fund"
+    },
+    {
+      "symbol": "270042",
+      "shareClass": "A",
+      "channelKind": "direct",
+      "status": "paused",
+      "quotaScope": "270042:A:fund"
+    },
+    {
+      "symbol": "270042",
+      "shareClass": "A",
+      "channelKind": "agency",
+      "status": "paused",
+      "quotaScope": "270042:A:fund"
+    }
+  ]
+}

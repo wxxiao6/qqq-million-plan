@@ -1,0 +1,85 @@
+{
+  "source": "mock",
+  "nasdaqIndex": 21450.32,
+  "goldPrice": 786.50,
+  "shares": [
+    {
+      "symbol": "016452",
+      "shareClass": "A",
+      "name": "南方纳斯达克100发起",
+      "manager": "南方基金",
+      "directStatus": "limited",
+      "directDailyLimit": 100,
+      "agencyStatus": "limited",
+      "agencyDailyLimit": 500,
+      "nav": 1.2345,
+      "navDate": "2026-08-26"
+    },
+    {
+      "symbol": "015299",
+      "shareClass": "A",
+      "name": "华夏纳斯达克100ETF联接",
+      "manager": "华夏基金",
+      "directStatus": "paused",
+      "directDailyLimit": null,
+      "agencyStatus": "limited",
+      "agencyDailyLimit": 200,
+      "nav": 1.1020,
+      "navDate": "2026-08-26"
+    },
+    {
+      "symbol": "015300",
+      "shareClass": "C",
+      "name": "华夏纳斯达克100ETF联接",
+      "manager": "华夏基金",
+      "directStatus": "paused",
+      "agencyStatus": "paused",
+      "nav": 1.0980,
+      "navDate": "2026-08-26"
+    },
+    {
+      "symbol": "040046",
+      "shareClass": "A",
+      "name": "华安纳斯达克100ETF联接",
+      "manager": "华安基金",
+      "directStatus": "open",
+      "agencyStatus": "limited",
+      "agencyDailyLimit": 50,
+      "nav": 2.0100,
+      "navDate": "2026-08-26"
+    },
+    {
+      "symbol": "270042",
+      "shareClass": "A",
+      "name": "广发纳斯达克100ETF联接人民币",
+      "manager": "广发基金",
+      "directStatus": "paused",
+      "agencyStatus": "paused",
+      "nav": 1.5500,
+      "navDate": "2026-08-26"
+    },
+    {
+      "symbol": "160213",
+      "shareClass": "A",
+      "name": "国泰纳斯达克100指数",
+      "manager": "国泰基金",
+      "directStatus": "limited",
+      "directDailyLimit": 1000,
+      "agencyStatus": "limited",
+      "agencyDailyLimit": 10,
+      "nav": 1.8800,
+      "navDate": "2026-08-26"
+    },
+    {
+      "symbol": "000834",
+      "shareClass": "A",
+      "name": "大成纳斯达克100ETF联接",
+      "manager": "大成基金",
+      "directStatus": "open",
+      "agencyStatus": "limited",
+      "agencyDailyLimit": 100,
+      "nav": 1.0100,
+      "navDate": "2026-08-26"
+    }
+  ]
+}

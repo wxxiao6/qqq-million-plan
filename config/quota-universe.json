@@ -1,0 +1,61 @@
+{
+  "minOrderDefault": 10,
+  "shares": [
+    {
+      "symbol": "016452",
+      "name": "南方纳斯达克100发起",
+      "shareClass": "A",
+      "manager": "南方基金",
+      "minOrder": 10,
+      "active": true
+    },
+    {
+      "symbol": "015299",
+      "name": "华夏纳斯达克100ETF联接",
+      "shareClass": "A",
+      "manager": "华夏基金",
+      "minOrder": 10,
+      "active": true
+    },
+    {
+      "symbol": "015300",
+      "name": "华夏纳斯达克100ETF联接",
+      "shareClass": "C",
+      "manager": "华夏基金",
+      "minOrder": 10,
+      "active": true
+    },
+    {
+      "symbol": "040046",
+      "name": "华安纳斯达克100ETF联接",
+      "shareClass": "A",
+      "manager": "华安基金",
+      "minOrder": 10,
+      "active": true
+    },
+    {
+      "symbol": "270042",
+      "name": "广发纳斯达克100ETF联接人民币",
+      "shareClass": "A",
+      "manager": "广发基金",
+      "minOrder": 10,
+      "active": true
+    },
+    {
+      "symbol": "160213",
+      "name": "国泰纳斯达克100指数",
+      "shareClass": "A",
+      "manager": "国泰基金",
+      "minOrder": 10,
+      "active": true
+    },
+    {
+      "symbol": "000834",
+      "name": "大成纳斯达克100ETF联接",
+      "shareClass": "A",
+      "manager": "大成基金",
+      "minOrder": 10,
+      "active": true
+    }
+  ]
+}
