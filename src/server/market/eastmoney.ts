@@ -5,7 +5,7 @@ type EastmoneyRow = { FSRQ?: string; DWJZ?: string };
 export async function fetchOfficialNav(symbol: string): Promise<{ nav: number; asOf: string } | null> {
   const url = `${NAV_ENDPOINT}?fundCode=${encodeURIComponent(symbol)}&pageIndex=1&pageSize=1`;
   try {
-    const response = await fetch(url, { headers: { Referer: `https://fund.eastmoney.com/${symbol}.html`, "User-Agent": "personal-finance-workbench/1.0" }, signal: AbortSignal.timeout(10_000) });
+    const response = await fetch(url, { headers: { Referer: `https://fund.eastmoney.com/${symbol}.html`, "User-Agent": "qqq-million-plan/1.0" }, signal: AbortSignal.timeout(10_000) });
     if (!response.ok) return null;
     const payload = await response.json() as { Data?: { LSJZList?: EastmoneyRow[] } };
     const row = payload.Data?.LSJZList?.[0];

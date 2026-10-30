@@ -194,14 +194,6 @@ export function seedNasdaqFundCatalog(database: Database.Database): number {
     SET verification_status='unavailable', evidence_url=?, evidence_note=?, checked_at=?
     WHERE code=? AND channel_kind='agency'
   `);
-  const clearDirectOnlyAgencyQuote = database.prepare(
-    "DELETE FROM nasdaq_channel_quotes WHERE code='021000' AND channel_kind='agency'",
-  );
-  const hasLegacyQuotaCells = Boolean(database.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='quota_cells'",
-  ).get());
-  const clearDirectOnlyLegacyQuota = hasLegacyQuotaCells
-    ? database.prepare("DELETE FROM quota_cells WHERE symbol='021000' AND channel_kind='agency'") : null;
   const channelCheck = database.prepare(`
     UPDATE nasdaq_fund_sales_channels
     SET checked_at=COALESCE(checked_at, ?), evidence_note=COALESCE(evidence_note, ?)
@@ -249,8 +241,6 @@ export function seedNasdaqFundCatalog(database: Database.Database): number {
     channelUnavailable.run("https://www.nffund.com/new/personal-financing/detail.html?fundCode=021000",
       "暂设仅直销：南方基金该 I 类份额官网销售机构栏目当前仅列直销，未列代销",
       new Date().toISOString().slice(0, 10), "021000");
-    clearDirectOnlyAgencyQuote.run();
-    clearDirectOnlyLegacyQuota?.run();
     // 天弘基金 022525 官方份额页明确列示这六家代销机构。
     for (const seller of [
       "腾安基金销售（深圳）有限公司",

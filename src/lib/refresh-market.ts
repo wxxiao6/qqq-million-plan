@@ -1,6 +1,17 @@
+import catalog from "../../config/nasdaq-funds.json";
+
 type Failure = { code: string; error: string };
 type Totals = { requested: number; success: number; failed: Failure[] };
 type Result = { ok: boolean; partial?: boolean; error?: string; failed?: Failure[] };
+
+const usdCodes = new Set(catalog.funds.filter((fund) => fund.currency === "USD").map((fund) => fund.code));
+
+function visibleResult(result: Result, success: number): Result {
+  if (!result.failed?.length) return result;
+  const failed = result.failed.filter((item) => !usdCodes.has(item.code));
+  return { ...result, ok: failed.length === 0, partial: success > 0 && failed.length > 0, failed,
+    error: failed.length ? failed.map((item) => `${item.code}：${item.error}`).join("；") : undefined };
+}
 
 /** Workers Free limits external subrequests, so the browser advances bounded
  * batches. A failed request stops the run without pretending it completed. */
@@ -16,7 +27,7 @@ export async function refreshMarket(fetcher: typeof fetch = fetch): Promise<Resu
     return result;
   };
   const initial = await call();
-  if (!initial.chunked) return initial as Result;
+  if (!initial.chunked) return visibleResult(initial as Result, Number(initial.success ?? 0));
   const run = { runId: initial.runId, observedAt: initial.observedAt, bizDate: initial.bizDate };
   const totals: Record<"nav" | "quota", Totals> = {
     nav: { requested: 0, success: 0, failed: [] }, quota: { requested: 0, success: 0, failed: [] },
@@ -35,6 +46,5 @@ export async function refreshMarket(fetcher: typeof fetch = fetch): Promise<Resu
   await call({ ...run, phase: "finish", ...totals });
   const failed = [...totals.nav.failed, ...totals.quota.failed];
   const success = totals.nav.success + totals.quota.success;
-  return { ok: failed.length === 0, partial: success > 0 && failed.length > 0, failed,
-    error: failed.length ? failed.map((item) => `${item.code}：${item.error}`).join("；") : undefined };
+  return visibleResult({ ok: failed.length === 0, failed }, success);
 }

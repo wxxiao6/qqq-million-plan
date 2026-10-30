@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const AUTH_CHALLENGE = 'Basic realm="Personal Finance", charset="UTF-8"';
+const AUTH_CHALLENGE = 'Basic realm="qqq-million-plan", charset="UTF-8"';
 
 async function constantTimeEqual(left: string, right: string): Promise<boolean> {
   const encoder = new TextEncoder();

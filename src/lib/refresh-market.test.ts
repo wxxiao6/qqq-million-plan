@@ -18,6 +18,24 @@ describe("market refresh orchestration", () => {
     expect(seen[4]).toMatchObject({ nav: { requested: 2, success: 2 }, quota: { requested: 1, success: 0 } });
   });
 
+  it("silences USD failures while preserving other errors and complete run totals", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const fetcher = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      calls.push(body);
+      if (!body.phase) return Response.json({ chunked: true, runId: "run", observedAt: "time", bizDate: "date" });
+      if (body.phase === "finish") return Response.json({ ok: true });
+      return Response.json({ requested: 2, success: 1, failed: [{ code: "019738", error: "unavailable" }], next: null });
+    });
+    expect(await refreshMarket(fetcher)).toMatchObject({ ok: true, failed: [] });
+    expect(calls[3]).toMatchObject({ nav: { requested: 2, success: 1, failed: [{ code: "019738" }] } });
+
+    const local = vi.fn(async () => Response.json({ ok: false, success: 1, failed: [
+      { code: "019739", error: "unavailable" }, { code: "016452", error: "offline" },
+    ] }, { status: 207 }));
+    expect(await refreshMarket(local)).toMatchObject({ ok: false, partial: true, failed: [{ code: "016452", error: "offline" }], error: "016452：offline" });
+  });
+
   it("does not finalize an interrupted refresh", async () => {
     const fetcher = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => init?.body
       ? Response.json({ error: "unavailable" }, { status: 500 })

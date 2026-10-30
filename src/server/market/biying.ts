@@ -5,7 +5,7 @@ import { writeJob } from "../jobs/status";
 import type { FundNavSource } from "./source";
 
 const API_ROOT = "https://api.biyingapi.com";
-const USER_AGENT = "personal-finance-workbench/1.0";
+const USER_AGENT = "qqq-million-plan/1.0";
 
 type BiyingNavRow = { dm?: string; mc?: string; t?: string; dwjz?: string | number; zzl?: string | number };
 type BiyingInfo = { dm?: string; qc?: string; jc?: string; lx?: string; glr?: string; [key: string]: unknown };

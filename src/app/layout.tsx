@@ -26,7 +26,7 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "财务决策工作台",
+  title: "qqq-million-plan",
   description: "个人财务工作台：资产、持仓、纳指额度与市场关注度。",
 };
 

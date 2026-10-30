@@ -21,14 +21,13 @@ describe("动态仓资产类型", () => {
     const { listPositionDetails, getExposureSummary } = await import("@/server/ledger");
     expect(listPositionDetails()[0].today).toBeCloseTo(2852.51 * 8.4083 * 1.02 / 101.02);
     expect(getExposureSummary("nasdaq").today).toBeCloseTo(2852.51 * 8.4083 * 1.02 / 101.02);
-    const { runQuotaScan } = await import("@/server/jobs/quota-scan");
-    runQuotaScan({ shares: [{ symbol: "021778", shareClass: "F", name: "广发", manager: "广发基金",
+    const { runNavScan } = await import("@/server/jobs/nav-scan");
+    runNavScan({ shares: [{ symbol: "021778", shareClass: "F", name: "广发", manager: "广发基金",
       directStatus: null, directDailyLimit: null, agencyStatus: null, agencyDailyLimit: null,
       nav: 8.4083, navDate: "2026-10-08", navChangePct: 1.02, priorNav: 8.3234, priorNavDate: "2026-09-30" }] });
     expect(listPositionDetails()[0].today).toBeCloseTo(242.18, 2);
     expect(listPositionDetails()[0].marketValue).toBeCloseTo(23984.76, 2);
     db.prepare("DELETE FROM nav_snapshots WHERE symbol='021778' AND as_of='2026-09-30'").run();
-    const { runNavScan } = await import("@/server/jobs/nav-scan");
     runNavScan({ shares: [{ symbol: "021778", shareClass: "F", name: "广发", manager: "广发基金",
       directStatus: null, directDailyLimit: null, agencyStatus: null, agencyDailyLimit: null,
       nav: 8.4083, navDate: "2026-10-08", priorNav: 8.3234, priorNavDate: "2026-09-30" }] });

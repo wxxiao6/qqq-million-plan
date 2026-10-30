@@ -5,7 +5,7 @@ import type { FundNavRecord, FundNavSource } from "./source";
 
 const NAV_URL = "https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram";
 const RATE_URL = "https://fundmobapi.eastmoney.com/FundMApi/FundRateInfo.ashx";
-const USER_AGENT = "personal-finance-workbench/1.0";
+const USER_AGENT = "qqq-million-plan/1.0";
 const CLIENT_PARAMS = {
   deviceid: "1",
   plat: "Android",

@@ -8,26 +8,11 @@ const DATA_DIR = path.join(process.cwd(), "data");
 const DB_PATH =
   process.env.P0_TEST_DB ?? path.join(DATA_DIR, "ledger.sqlite");
 const MIGRATIONS_DIR = path.join(process.cwd(), "db", "migrations");
-const UNIVERSE_PATH = path.join(process.cwd(), "config", "quota-universe.json");
 const SNAPSHOT_PATH = path.join(process.cwd(), "config", "quota-snapshots.json");
 const NASDAQ_CATALOG_PATH = path.join(process.cwd(), "config", "nasdaq-funds.json");
 
 let db: Database.Database | null = null;
 let seededCatalogMtime = 0;
-
-type UniverseFile = {
-  minOrderDefault?: number;
-  shares: Array<{
-    symbol: string;
-    name: string;
-    shareClass: "A" | "C" | "D" | "E" | "I" | "F";
-    manager?: string;
-    minOrder?: number;
-    active?: boolean;
-    currency?: "CNY" | "USD";
-    marketType?: "otc" | "etf" | "lof";
-  }>;
-};
 
 export function getDbPath() {
   return DB_PATH;
@@ -40,7 +25,6 @@ export function getDb(): Database.Database {
     const catalogMtime = fs.statSync(NASDAQ_CATALOG_PATH).mtimeMs;
     if (catalogMtime !== seededCatalogMtime) {
       seedNasdaqFundCatalog(db);
-      seedNasdaqUniverse(db);
       seededCatalogMtime = catalogMtime;
     }
     return db;
@@ -89,49 +73,7 @@ function migrate(database: Database.Database) {
 
 function seed(database: Database.Database) {
   seedNasdaqFundCatalog(database);
-  if (process.env.P0_TEST_DB) seedQuotaUniverse(database);
-  seedNasdaqUniverse(database);
   if (process.env.P0_TEST_DB) seedQuotaSnapshots(database);
-}
-
-function seedNasdaqUniverse(database: Database.Database) {
-  // Legacy quota observations retain their own table, but membership and metadata
-  // are always projected from the canonical Nasdaq catalog.
-  database.exec(`
-    INSERT INTO quota_universe (symbol, share_class, name, manager, min_order, active, currency, market_type)
-    SELECT code, share_class, name, manager, min_order, 1, currency, market_type FROM nasdaq_funds WHERE true
-    ON CONFLICT(symbol, share_class) DO UPDATE SET
-      name = excluded.name, manager = excluded.manager, min_order = excluded.min_order,
-      active = excluded.active, currency = excluded.currency, market_type = excluded.market_type
-  `);
-}
-
-function seedQuotaUniverse(database: Database.Database) {
-  if (!fs.existsSync(UNIVERSE_PATH)) return;
-  const raw = JSON.parse(fs.readFileSync(UNIVERSE_PATH, "utf8")) as UniverseFile;
-  const upsert = database.prepare(`
-    INSERT INTO quota_universe (symbol, share_class, name, manager, min_order, active)
-    VALUES (@symbol, @shareClass, @name, @manager, @minOrder, @active)
-    ON CONFLICT(symbol, share_class) DO UPDATE SET
-      name = excluded.name,
-      manager = excluded.manager,
-      min_order = excluded.min_order,
-      active = excluded.active
-  `);
-
-  const run = database.transaction(() => {
-    for (const share of raw.shares) {
-      upsert.run({
-        symbol: share.symbol,
-        shareClass: share.shareClass,
-        name: share.name,
-        manager: share.manager ?? null,
-        minOrder: share.minOrder ?? raw.minOrderDefault ?? 10,
-        active: share.active === false ? 0 : 1,
-      });
-    }
-  });
-  run();
 }
 
 type SnapshotFile = {

@@ -17,9 +17,9 @@ export function AppNav() {
   return (
     <header className="app-shell sticky top-0 z-20 border-b border-border/80 bg-background/85 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-5 py-3.5 sm:px-8 lg:px-10">
-        <Link href="/dca" className="brand shrink-0 no-underline">
+        <Link href="/quota" className="brand shrink-0 no-underline">
           <span className="brand-mark" aria-hidden="true">¥</span>
-          <span>财务决策工作台</span>
+          <span>qqq-million-plan</span>
         </Link>
         <nav aria-label="导航" className="app-nav flex items-center gap-1">
           {ITEMS.map((item) => {

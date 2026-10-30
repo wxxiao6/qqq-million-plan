@@ -78,11 +78,6 @@ export type QuotaRow = {
   marketPrice: number | null;
   marketPriceAt: string | null;
   premiumPct: number | null;
-  fundStatus: SubscribeStatus | null;
-  fundDailyLimit: number | null;
-  fundSource: string | null;
-  fundBizDate: string | null;
-  fundUpdatedAt: string | null;
 };
 
 export type ChannelSummary = {
@@ -125,11 +120,6 @@ type UniverseRow = {
   min_order: number;
   currency: "CNY" | "USD";
   market_type: "otc" | "etf" | "lof";
-  fund_status: SubscribeStatus | null;
-  fund_daily_limit: number | null;
-  fund_source: string | null;
-  fund_biz_date: string | null;
-  fund_updated_at: string | null;
 };
 
 type CellRow = {
@@ -147,11 +137,8 @@ type CellRow = {
 function loadUniverse(): UniverseRow[] {
   return getDb()
     .prepare(
-      `SELECT f.code AS symbol, f.share_class, f.name, f.manager, f.min_order, f.currency, f.market_type,
-              u.fund_status, u.fund_daily_limit, u.fund_source, u.fund_biz_date, u.fund_updated_at
-       FROM nasdaq_funds f LEFT JOIN quota_universe u
-         ON u.symbol = f.code AND u.share_class = f.share_class
-       ORDER BY f.code, f.share_class`,
+      `SELECT code AS symbol, share_class, name, manager, min_order, currency, market_type
+       FROM nasdaq_funds ORDER BY code, share_class`,
     )
     .all() as UniverseRow[];
 }
@@ -327,7 +314,7 @@ export function getQuotaBoard(): QuotaBoard {
   );
   const held = new Set(listHeldSymbols());
   const activeDcaSymbols = loadActiveDcaSymbols();
-  const quotaJob = readJob("quota_scan");
+  const quotaJob = readJob("tiantian_quota");
   const navRows = getDb()
     .prepare(`
       SELECT n.symbol, n.as_of, n.nav, n.nav_change_pct, n.market_price, n.market_price_at
@@ -388,11 +375,6 @@ export function getQuotaBoard(): QuotaBoard {
         nav?.market_price != null && nav.nav > 0
           ? (nav.market_price / nav.nav - 1) * 100
           : null,
-      fundStatus: fund.fund_status,
-      fundDailyLimit: fund.fund_daily_limit,
-      fundSource: fund.fund_source,
-      fundBizDate: fund.fund_biz_date,
-      fundUpdatedAt: fund.fund_updated_at,
     };
   });
 

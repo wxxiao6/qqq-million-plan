@@ -1,6 +1,6 @@
 import { kvGet, kvSet } from "../db";
 
-export type JobName = "quota_scan" | "nav_scan" | "biying_nav" | "biying_info" | "tiantian_nav" | "tiantian_quota";
+export type JobName = "nav_scan" | "biying_nav" | "biying_info" | "tiantian_nav" | "tiantian_quota";
 
 export type JobRecord = {
   ok: boolean;

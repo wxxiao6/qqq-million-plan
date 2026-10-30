@@ -1,4 +1,4 @@
-# 财务决策工作台
+# qqq-million-plan
 
 面向用户的财务决策工作台产品，提供三个一级模块：定投管理 · 持仓管理 · 纳指雷达。
 
@@ -37,7 +37,7 @@ pnpm dev
 
 | 路径 | 模块 |
 | --- | --- |
-| `/` | 重定向到定投管理 |
+| `/` | 重定向到纳指额度 |
 | `/dca` | 定投管理 |
 | `/holdings` | 重定向到定投管理（旧入口） |
 | `/holdings/overview` | 重定向到定投管理（旧入口） |
@@ -49,7 +49,7 @@ pnpm dev
 
 ## 纳斯达克 QDII 清单
 
-`config/nasdaq-funds.json` 是唯一的基金成员目录，记录基金代码、名称、管理人、主题、份额类别、币种和市场类型。启动时同步到 `nasdaq_funds`；纳指雷达、行情刷新、定投候选和持仓选择都以这张表决定基金范围。`quota_universe` 仅保留旧额度状态字段，不再决定成员资格。旧搜索快照是历史取样证据，不参与目录导入。可运行 `python3 scripts/audit_nasdaq_catalog.py` 与天天基金公开代码索引比对新代码；新增候选需核对名称和产品类型后写入唯一目录。
+`config/nasdaq-funds.json` 是唯一的基金成员目录，记录基金代码、名称、管理人、主题、份额类别、币种和市场类型。启动时同步到 `nasdaq_funds`；纳指雷达、行情刷新、定投候选和持仓选择都以这张表决定基金范围。额度当前值与历史记录使用 `quota_current` 和 `quota_observations`。旧搜索快照是历史取样证据，不参与目录导入。可运行 `python3 scripts/audit_nasdaq_catalog.py` 与天天基金公开代码索引比对新代码；新增候选需核对名称和产品类型后写入唯一目录。
 
 公募基金统一信息披露平台的核验记录保存在 `config/csrc-catalog-evidence.json`，销售机构核验记录保存在 `config/nasdaq-sales-audit-2026-09-24.tsv`。这些是证据，不是第二份成员清单。某份额只在天天基金可查时仍可列入目录，并保留尚未核验的渠道状态。
 

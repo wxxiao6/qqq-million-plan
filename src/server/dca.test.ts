@@ -67,9 +67,9 @@ describe("定投计划", () => {
   it("仅直销份额即使残留代销报价也不能进入代销候选", async () => {
     const { getDb } = await import("@/server/db");
     const db = getDb();
-    db.prepare(`INSERT INTO nasdaq_tiantian_agency_quotes
-      (code, status, daily_limit, source_url, updated_at)
-      VALUES ('021000', 'limited', 200, 'https://fund.eastmoney.com/021000.html', '2026-10-10')`).run();
+    db.prepare(`INSERT OR REPLACE INTO quota_current
+      (code, share_class, channel_kind, status, daily_limit, currency, quota_scope, effective_on, observed_at, source_url, source_provider, updated_at)
+      VALUES ('021000', 'A', 'agency', 'limited', 200, 'CNY', '021000:A:agency', '2026-10-10', '2026-10-10T00:00:00Z', 'https://fund.eastmoney.com/021000.html', 'test', '2026-10-10T00:00:00Z')`).run();
     const { listDcaShareCandidates } = await import("@/server/dca");
     const { candidatesForChannel } = await import("@/lib/dca");
     expect(candidatesForChannel(listDcaShareCandidates(), "agency").some((row) => row.symbol === "021000")).toBe(false);

@@ -76,7 +76,6 @@ describe("纳指雷达看板", () => {
     const { getQuotaBoard } = await import("@/server/quota");
 
     db.prepare("DELETE FROM quota_current").run();
-    db.prepare("UPDATE quota_universe SET fund_status=NULL, fund_daily_limit=NULL").run();
 
     const board = getQuotaBoard();
     expect(board.emptyUniverse).toBe(false);
