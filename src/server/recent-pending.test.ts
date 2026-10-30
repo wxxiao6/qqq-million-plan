@@ -125,25 +125,14 @@ describe('按期自动记账', () => {
       .toEqual([{ executionOn: '2026-10-12', account: 'jd' }, { executionOn: '2026-10-13', account: 'jd' }]);
     expect(ctx.listDcaPlans()[0].investedTotal).toBe(20);
   });
-  it('迁移已确认持仓后重算原账户和新账户管理费，其他持仓保留', async () => {
+  it('迁移已确认持仓的账户时保留其他持仓', async () => {
     const ctx = await setup();
-    const { kvSet } = await import('./db');
-    const { getExposureSummary } = await import('./ledger');
     vi.setSystemTime(new Date('2026-10-12T04:00:00Z'));
-    kvSet('holdings.managementFeeStartDate', '2026-10-01');
     const saved = ctx.upsertDcaPlan({ ...plan, startDate: '2026-10-12' }, { importPastPending: true });
     if (!saved.ok) throw new Error(saved.error);
     ctx.db.prepare("UPDATE positions SET status='settled', shares=10, t_date='2026-10-09', recorded_on='2026-10-09' WHERE dca_plan_id=?").run(saved.id);
     ctx.db.prepare("INSERT INTO positions (account, exposure, symbol, shares, cost, status, recorded_on, updated_at) VALUES ('alipay', 'nasdaq', ?, 5, 10, 'settled', '2026-10-09', '2026-10-12')").run(plan.symbol);
-    ctx.db.prepare("INSERT INTO fund_management_fee_rates (code,effective_on,annual_rate_pct,source_url,source_provider,observed_at,status) VALUES (?, '2026-10-09', 0.5, 'https://example.com/rate', 'test', '2026-10-09', 'valid')").run(plan.symbol);
-    getExposureSummary('nasdaq', '2026-10-12');
-    const before = ctx.db.prepare("SELECT estimated_amount FROM holding_management_fee_totals WHERE symbol=? AND account='alipay'").get(plan.symbol) as { estimated_amount: number };
-    expect(before.estimated_amount).toBeGreaterThan(0);
     expect(ctx.upsertDcaPlan({ ...plan, id: saved.id, startDate: '2026-10-12', account: 'jd' }, { importPastPending: false }).ok).toBe(true);
-    const states = ctx.db.prepare('SELECT account, estimated_amount FROM holding_management_fee_totals WHERE symbol=? ORDER BY account').all(plan.symbol) as { account: string; estimated_amount: number }[];
-    expect(states.map((state) => state.account)).toEqual(['alipay', 'jd']);
-    expect(states[0].estimated_amount).toBeCloseTo(before.estimated_amount / 3, 8);
-    expect(states[1].estimated_amount).toBeCloseTo(before.estimated_amount * 2 / 3, 8);
     expect(ctx.listPositions().map((p) => p.account)).toEqual(['jd', 'alipay']);
   });
   it('再次保存可修复计划与旧记录账户不一致，保留其他计划的记录', async () => {

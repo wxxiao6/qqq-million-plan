@@ -10,15 +10,6 @@ import {
 import { beijingTodayISO } from "@/lib/format";
 import { getDb } from "../db";
 import { readJob, readNetInflow } from "../jobs/status";
-import { getManagementFeeSummary as calculateManagementFeeSummary, type ManagementFeeSummary } from "./management-fees";
-
-export {
-  getManagementFeeStartDate,
-  getManagementFeeSummary,
-  listManagementFeeEntries,
-} from "./management-fees";
-export type { ManagementFeeSummary } from "./management-fees";
-
 export type Account = "alipay" | "gf_direct" | "cmb" | "jd" | "other";
 export type Exposure = "nasdaq" | "gold" | "crypto";
 export type PositionStatus = "settled" | "pending" | "failed" | "cancelled";
@@ -61,24 +52,6 @@ export type NavSnapshot = {
   asOf: string;
   nav: number;
   navChangePct?: number | null;
-};
-
-export type Deposit = {
-  id: number;
-  bank: string;
-  principal: number;
-  rate: number | null;
-  startDate: string | null;
-  maturityDate: string | null;
-  canPrepay: boolean;
-};
-
-export type Mortgage = {
-  remainingPrincipal: number;
-  monthlyPayment: number | null;
-  remainingTerms: number | null;
-  rateType: "fixed" | "floating" | null;
-  paymentDay: number | null;
 };
 
 export type ChannelRow = {
@@ -304,14 +277,7 @@ export type ExposureSummary = {
   pending: { shares: number | null; cost: number } | null;
   investedCash: number;
   feeTotal: number;
-  managementFeeEstimated: number;
-  managementFeeActual: number;
-  managementFeeTotal: number;
-  managementFeeCoverage: ManagementFeeSummary["managementFeeCoverage"];
-  reconciledMarketValue: number | null;
-  reconciledHoldingPnl: number | null;
-  managementFeeRateObservedAt: string | null;
-  managementFeeRateSourceUrl: string | null;
+
 };
 
 export function getExposureSummary(
@@ -334,12 +300,6 @@ export function getExposureSummary(
   const marketValue = sumMarketValue(lots);
   const cost = settled.reduce((sum, row) => sum + row.cost, 0);
   const pnl = holdingGain(marketValue, cost);
-  const managementFee = calculateManagementFeeSummary({
-    positions,
-    asOf: day,
-    rawMarketValue: marketValue,
-    cost,
-  });
 
   const byAccount = new Map<Account, ChannelRow>();
   for (const row of settled) {
@@ -388,18 +348,10 @@ export function getExposureSummary(
     pending,
     investedCash,
     feeTotal,
-    managementFeeEstimated: managementFee.managementFeeEstimated,
-    managementFeeActual: managementFee.managementFeeActual,
-    managementFeeTotal: managementFee.managementFeeTotal,
-    managementFeeCoverage: managementFee.managementFeeCoverage,
-    reconciledMarketValue: managementFee.reconciledMarketValue,
-    reconciledHoldingPnl: managementFee.reconciledHoldingPnl,
-    managementFeeRateObservedAt: managementFee.lastRateObservedAt,
-    managementFeeRateSourceUrl: managementFee.lastRateSourceUrl,
   };
 }
 
-/** 持仓概览页顶总览：汇总全部风险资产，存款不参与。 */
+/** 持仓概览页顶总览：汇总全部风险资产。 */
 export function getDynamicSummary(asOf?: string): ExposureSummary {
   const day = asOf ?? beijingTodayISO();
   const positions = listPositions();
@@ -414,12 +366,6 @@ export function getDynamicSummary(asOf?: string): ExposureSummary {
     })),
   );
   const cost = settled.reduce((sum, row) => sum + row.cost, 0);
-  const managementFee = calculateManagementFeeSummary({
-    positions,
-    asOf: day,
-    rawMarketValue: marketValue,
-    cost,
-  });
   const investedCash = positions.filter((row) => row.status === "settled" || row.status === "pending").reduce((sum, row) => sum + row.cashDebited, 0);
   const feeTotal = positions.filter((row) => row.status === "settled" || row.status === "pending").reduce((sum, row) => sum + row.feeAmount, 0);
   const job = readJob("nav_scan");
@@ -448,14 +394,6 @@ export function getDynamicSummary(asOf?: string): ExposureSummary {
           },
     investedCash,
     feeTotal,
-    managementFeeEstimated: managementFee.managementFeeEstimated,
-    managementFeeActual: managementFee.managementFeeActual,
-    managementFeeTotal: managementFee.managementFeeTotal,
-    managementFeeCoverage: managementFee.managementFeeCoverage,
-    reconciledMarketValue: managementFee.reconciledMarketValue,
-    reconciledHoldingPnl: managementFee.reconciledHoldingPnl,
-    managementFeeRateObservedAt: managementFee.lastRateObservedAt,
-    managementFeeRateSourceUrl: managementFee.lastRateSourceUrl,
   };
 }
 
@@ -625,62 +563,4 @@ export function upsertTodaySnapshot() {
        ON CONFLICT(as_of) DO UPDATE SET dynamic_mv = excluded.dynamic_mv`,
     )
     .run(day, marketValue);
-}
-
-export function listDeposits(): Deposit[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT id, bank, principal, rate, start_date, maturity_date, can_prepay
-       FROM deposits ORDER BY id`,
-    )
-    .all() as Array<{
-    id: number;
-    bank: string;
-    principal: number;
-    rate: number | null;
-    start_date: string | null;
-    maturity_date: string | null;
-    can_prepay: number;
-  }>;
-  return rows.map((row) => ({
-    id: row.id,
-    bank: row.bank,
-    principal: row.principal,
-    rate: row.rate,
-    startDate: row.start_date,
-    maturityDate: row.maturity_date,
-    canPrepay: row.can_prepay === 1,
-  }));
-}
-
-export function getMortgage(): Mortgage | null {
-  const row = getDb()
-    .prepare(
-      `SELECT remaining_principal, monthly_payment, remaining_terms, rate_type, payment_day
-       FROM mortgage WHERE id = 1`,
-    )
-    .get() as
-    | {
-        remaining_principal: number;
-        monthly_payment: number | null;
-        remaining_terms: number | null;
-        rate_type: "fixed" | "floating" | null;
-        payment_day: number | null;
-      }
-    | undefined;
-  if (!row) return null;
-  return {
-    remainingPrincipal: row.remaining_principal,
-    monthlyPayment: row.monthly_payment,
-    remainingTerms: row.remaining_terms,
-    rateType: row.rate_type,
-    paymentDay: row.payment_day,
-  };
-}
-
-export function getCash(): number {
-  const row = getDb()
-    .prepare("SELECT amount FROM cash_balance WHERE id = 1")
-    .get() as { amount: number } | undefined;
-  return row?.amount ?? 0;
 }

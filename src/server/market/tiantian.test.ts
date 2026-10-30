@@ -15,8 +15,7 @@ describe("天天基金数据源", () => {
     ] }, "https://example.com/nav")).toMatchObject({ code: "016452", navDate: "2026-10-27", nav: 2.1, dailyChangePct: 1.25 });
     expect(parseTiantianQuota("016452", { Datas: {
       SGZT: "限大额", MAXSG: "10", MGREXP: "0.50%", sg: [{ money: "<100万", source: "1.20%", rate: "0.12%" }],
-    } }, "https://example.com/rate")).toMatchObject({ code: "016452", status: "limited", dailyLimit: 10, purchaseFeePct: 0.12, managementFeePct: 0.5, managementFeeStatus: "valid" });
-    expect(parseTiantianQuota("016452", { Datas: { SGZT: "开放申购", MGREXP: "--" } }, "https://example.com/rate")).toMatchObject({ managementFeePct: null, managementFeeStatus: "invalid" });
+    } }, "https://example.com/rate")).toMatchObject({ code: "016452", status: "limited", dailyLimit: 10, purchaseFeePct: 0.12 });
   });
 
   it("只更新代销额度，保留外部机器人写入的直销额度", async () => {
@@ -36,7 +35,6 @@ describe("天天基金数据源", () => {
     expect(result.success).toBeGreaterThan(0);
     expect(db.prepare("SELECT status,daily_limit,source_provider,purchase_fee_pct FROM quota_current WHERE code='016452' AND channel_kind='agency'").get()).toMatchObject({ status: "limited", daily_limit: 10, source_provider: "tiantian-fund", purchase_fee_pct: 0.12 });
     expect(db.prepare("SELECT status,daily_limit,source_provider FROM quota_current WHERE code='016452' AND channel_kind='direct'").get()).toEqual({ status: "limited", daily_limit: 123, source_provider: "external-ai-bot" });
-    expect(db.prepare("SELECT annual_rate_pct, raw_value, status FROM fund_management_fee_rates WHERE code='016452' AND effective_on='2026-10-27'").get()).toEqual({ annual_rate_pct: 0.5, raw_value: "0.50%", status: "valid" });
   });
 });
 

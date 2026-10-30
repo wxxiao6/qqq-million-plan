@@ -27,7 +27,6 @@ import { listEffectiveQuotaCells } from "../funds/effective-quotes";
 import { beijingTodayISO, isISODate, shiftISO, todayISO } from "@/lib/format";
 import { createPendingSubscription } from "../ledger/pending";
 import { listPositions, type Account } from "../ledger";
-import { rebuildManagementFeeGroup } from "../ledger/management-fees";
 
 export type { DcaBoard, DcaPlanView as DcaPlan, DcaShareCandidate };
 
@@ -407,21 +406,8 @@ function upsertDcaPlanInternal(
         input.id,
       );
     // The plan and all its historical records represent one account assignment.
-    const previousAccounts = getDb().prepare(
-      "SELECT DISTINCT account FROM positions WHERE dca_plan_id = ? AND account <> ?",
-    ).all(input.id, account) as { account: Account }[];
-    if (previousAccounts.length) {
-      const hasSettled = Boolean(getDb().prepare(
-        "SELECT 1 FROM positions WHERE dca_plan_id = ? AND account <> ? AND status = 'settled' LIMIT 1",
-      ).get(input.id, account));
-      getDb().prepare("UPDATE positions SET account = ?, updated_at = ? WHERE dca_plan_id = ? AND account <> ?")
-        .run(account, now, input.id, account);
-      if (hasSettled) {
-        const positions = listPositions();
-        for (const previous of previousAccounts) rebuildManagementFeeGroup(positions, input.symbol.trim(), previous.account);
-        rebuildManagementFeeGroup(positions, input.symbol.trim(), account);
-      }
-    }
+    getDb().prepare("UPDATE positions SET account = ?, updated_at = ? WHERE dca_plan_id = ? AND account <> ?")
+      .run(account, now, input.id, account);
     const execution = recordDcaExecution({
       planId: input.id,
       symbol: input.symbol.trim(),

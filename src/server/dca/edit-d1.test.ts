@@ -12,7 +12,7 @@ function binding(db: Database.Database, beforeWrite?: () => void): ReconcileD1 {
   let calls = 0;
   return {
     prepare(sql) { return { bind(...values) { return { sql, values } as unknown as ReturnType<ReconcileD1["prepare"]>; } }; },
-    async batch(statements) { if (++calls === 5) beforeWrite?.(); return db.transaction(() => statements.map((item) => {
+    async batch(statements) { if (++calls === 3) beforeWrite?.(); return db.transaction(() => statements.map((item) => {
       const { sql, values } = item as unknown as { sql: string; values: (string | number | null)[] };
       const stmt = db.prepare(sql);
       return { results: stmt.reader ? stmt.all(...values) : (stmt.run(...values), []) };
@@ -25,11 +25,11 @@ describe("D1 plan editing", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(new Date("2026-10-14T04:00:00Z"));
-      const { getDb, kvSet } = await import("../db");
+      const { getDb } = await import("../db");
       const { upsertDcaPlan } = await import("./index");
       const { createPendingSubscription, resolvePendingSubscription } = await import("../ledger/pending");
       const { editDcaPlanD1 } = await import("./edit-d1");
-      const db = getDb(); kvSet("holdings.managementFeeStartDate", "2026-10-01");
+      const db = getDb();
       const input = { symbol: "019547", shareClass: "A", channelKind: "agency", account: "alipay", amount: 10, frequency: "daily", startDate: "2026-10-12" };
       const plan = upsertDcaPlan(input); if (!plan.ok) throw new Error(plan.error);
       const record = createPendingSubscription({ symbol: input.symbol, account: "alipay", dcaPlanId: plan.id, executionOn: "2026-10-12", cutoffPeriod: "before_15", cashDebited: 10, feeAmount: 0 });
@@ -40,7 +40,6 @@ describe("D1 plan editing", () => {
       db.prepare("UPDATE dca_plans SET invested_total=invested_total+10 WHERE id=?").run(plan.id);
       for (const date of ["2026-10-12", "2026-10-13", "2026-10-14"]) {
         db.prepare("INSERT INTO nav_snapshots (symbol,as_of,nav,source) VALUES ('019547',?,2,'real')").run(date);
-        db.prepare("INSERT INTO fund_management_fee_rates(code,effective_on,annual_rate_pct,source_url,source_provider,observed_at,status) VALUES ('019547',?,0.5,'https://example.com','test',?,'valid')").run(date, date);
       }
       db.pragma("journal_mode = DELETE");
       const cloud = new Database(db.serialize());
@@ -48,10 +47,8 @@ describe("D1 plan editing", () => {
       expect(await editDcaPlanD1(binding(cloud), edit, "2026-10-14")).toEqual(upsertDcaPlan(edit, { importPastPending: false }));
       const planSql = "SELECT symbol,account,amount,invested_total,imported_through,next_debit_date,status FROM dca_plans WHERE id=?";
       const positionSql = "SELECT account,symbol,shares,cost,status,note,recorded_on,execution_on,dca_plan_id,cash_debited,fee_amount,cutoff_period,auto_generated,t_date,t_nav,confirmed_on FROM positions ORDER BY id";
-      const feeSql = "SELECT symbol,account,estimated_amount,actual_amount,last_nav_date FROM holding_management_fee_totals ORDER BY symbol,account";
       expect(cloud.prepare(planSql).get(plan.id)).toEqual(db.prepare(planSql).get(plan.id));
       expect(cloud.prepare(positionSql).all()).toEqual(db.prepare(positionSql).all());
-      expect(cloud.prepare(feeSql).all()).toEqual(db.prepare(feeSql).all());
       cloud.close();
     } finally { vi.useRealTimers(); }
   });

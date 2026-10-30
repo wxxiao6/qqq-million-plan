@@ -8,12 +8,12 @@ import { accountLabel } from "@/components/labels";
 import { SalesChannelFilters } from "@/components/sales-channel-filter";
 import { Money } from "@/components/money";
 import { filterHoldingPositions, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, summarizeNasdaqHoldings, type HoldingChannelGroup, type HoldingGroup } from "@/lib/holdings-dashboard";
-import type { ManagementFeeSummary, PositionDetail } from "@/server/ledger";
+import type { PositionDetail } from "@/server/ledger";
 import { filterBySalesChannel, type SalesChannelFilter } from "@/lib/sales-channel-filter";
 
 type SortOrder = "value" | "gain" | "symbol";
 
-export function HoldingsExplorer({ positions, names, managers, managementFees, platformManagementFees }: { positions: PositionDetail[]; names: Record<string, string>; managers: Record<string, string>; managementFees: Record<string, ManagementFeeSummary>; platformManagementFees: Record<string, ManagementFeeSummary> }) {
+export function HoldingsExplorer({ positions, names, managers }: { positions: PositionDetail[]; names: Record<string, string>; managers: Record<string, string> }) {
   const [query, setQuery] = useState("");
   const [channel, setChannel] = useState<SalesChannelFilter>("all");
   const [detail, setDetail] = useState("all");
@@ -21,12 +21,12 @@ export function HoldingsExplorer({ positions, names, managers, managementFees, p
 
   const groups = useMemo(() => {
     const matching = filterBySalesChannel(filterHoldingPositions(positions, names, query, "all"), managers, channel, detail);
-    const result = groupNasdaqHoldings(matching, names).map((group) => ({ ...group, managementFee: managementFees[group.symbol] }));
+    const result = groupNasdaqHoldings(matching, names);
     result.sort((a, b) => sort === "symbol" ? a.symbol.localeCompare(b.symbol) :
       sort === "gain" ? (b.holdingPnl ?? Number.NEGATIVE_INFINITY) - (a.holdingPnl ?? Number.NEGATIVE_INFINITY) || a.symbol.localeCompare(b.symbol) :
         (b.marketValue ?? Number.NEGATIVE_INFINITY) - (a.marketValue ?? Number.NEGATIVE_INFINITY) || a.symbol.localeCompare(b.symbol));
     return result;
-  }, [positions, names, managers, managementFees, query, channel, detail, sort]);
+  }, [positions, names, managers, query, channel, detail, sort]);
 
   const summary = useMemo(() => summarizeNasdaqHoldings(groups), [groups]);
   const isFiltered = channel !== "all" || query.trim().length > 0;
@@ -85,7 +85,7 @@ export function HoldingsExplorer({ positions, names, managers, managementFees, p
     </div>
 
     {groups.length > 0 ? <div className="space-y-3">
-      {groups.map((group) => <HoldingCard key={group.symbol} group={group} fundOptions={names} fundManagers={managers} platformManagementFees={platformManagementFees} />)}
+      {groups.map((group) => <HoldingCard key={group.symbol} group={group} fundOptions={names} fundManagers={managers} />)}
     </div> : <div className="rounded-2xl border border-dashed border-border bg-card/60 px-6 py-14 text-center">
       <p className="text-base font-medium">{positions.length ? "没有符合条件的持仓" : "还没有纳指持仓"}</p>
       <p className="mt-1 text-sm text-muted-foreground">{positions.length ? "试试其他基金代码或渠道。" : "点击页面右上角的“新增持仓”开始记录。"}</p>
@@ -103,7 +103,7 @@ function OverviewNumber({ label, value, detail }: { label: string; value: React.
   </div>;
 }
 
-function HoldingCard({ group, fundOptions, fundManagers, platformManagementFees }: { group: HoldingGroup; fundOptions: Record<string, string>; fundManagers: Record<string, string>; platformManagementFees: Record<string, ManagementFeeSummary> }) {
+function HoldingCard({ group, fundOptions, fundManagers }: { group: HoldingGroup; fundOptions: Record<string, string>; fundManagers: Record<string, string> }) {
   const channels = groupHoldingChannels(group.positions);
   return <details className="group overflow-hidden rounded-2xl border border-border bg-card shadow-[0_5px_18px_rgba(70,52,36,.035)] open:border-copper/40">
     <summary className="relative flex cursor-pointer list-none flex-col gap-4 px-5 py-5 marker:hidden hover:bg-muted/25 sm:px-6 lg:flex-row lg:items-center [&::-webkit-details-marker]:hidden">
@@ -125,23 +125,18 @@ function HoldingCard({ group, fundOptions, fundManagers, platformManagementFees 
       {group.unvaluedCount > 0 ? <p className="mb-3 text-xs text-limit">{group.unvaluedCount} 笔已确认持仓缺少净值，未计入上方资产合计与收益。</p> : null}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1120px] table-fixed border-collapse text-left text-sm">
-          <colgroup><col className="w-[190px]" /><col className="w-[160px]" /><col className="w-[150px]" /><col className="w-[150px]" /><col className="w-[140px]" /><col className="w-[140px]" /><col className="w-[120px]" /><col className="w-[120px]" /></colgroup>
+          <colgroup><col className="w-[190px]" /><col className="w-[160px]" /><col className="w-[150px]" /><col className="w-[150px]" /><col className="w-[140px]" /><col className="w-[140px]" /><col className="w-[120px]" /></colgroup>
           <thead><tr className="border-b border-border text-xs text-muted-foreground">
-            <th className="py-2 font-medium">销售渠道</th><th className="py-2 font-medium">总金额</th><th className="py-2 font-medium">待确认金额</th><th className="py-2 font-medium">持仓成本</th><th className="py-2 font-medium">{group.navAsOf ? `${group.navAsOf} 收益` : "单日收益"}</th><th className="py-2 font-medium">持有收益</th><th className="py-2 font-medium">费用成本</th><th className="py-2 text-right font-medium">操作</th>
+            <th className="py-2 font-medium">销售渠道</th><th className="py-2 font-medium">总金额</th><th className="py-2 font-medium">待确认金额</th><th className="py-2 font-medium">持仓成本</th><th className="py-2 font-medium">{group.navAsOf ? `${group.navAsOf} 收益` : "单日收益"}</th><th className="py-2 font-medium">持有收益</th><th className="py-2 text-right font-medium">操作</th>
           </tr></thead>
-          <tbody>{channels.map((channel) => <ChannelSummaryRow key={channel.account} channel={channel} group={group} fundOptions={fundOptions} fundManagers={fundManagers} platformManagementFees={platformManagementFees} />)}</tbody>
+          <tbody>{channels.map((channel) => <ChannelSummaryRow key={channel.account} channel={channel} group={group} fundOptions={fundOptions} fundManagers={fundManagers} />)}</tbody>
         </table>
       </div>
     </div>
   </details>;
 }
 
-function ChannelSummaryRow({ channel, group, fundOptions, fundManagers, platformManagementFees }: { channel: HoldingChannelGroup; group: HoldingGroup; fundOptions: Record<string, string>; fundManagers: Record<string, string>; platformManagementFees: Record<string, ManagementFeeSummary> }) {
-  const feeSummary = platformManagementFees[`${group.symbol}:${channel.account}`];
-  const feeValues = channel.settledPositions.map((position) => feeCostForPosition(position, group, feeSummary));
-  const feeCost = feeValues.length > 0 && feeValues.every((value): value is number => value != null)
-    ? feeValues.reduce((sum, value) => sum + value, 0)
-    : null;
+function ChannelSummaryRow({ channel, group, fundOptions, fundManagers }: { channel: HoldingChannelGroup; group: HoldingGroup; fundOptions: Record<string, string>; fundManagers: Record<string, string> }) {
   const label = channel.account === "gf_direct" ? fundManagers[group.symbol] ?? "基金管理人" : accountLabel(channel.account);
   return <tr className="border-b border-border/70 last:border-0 align-top">
     <td className="py-3"><span className="font-medium">{label}</span>{channel.pendingPositions.length > 0 ? <small className="block text-xs text-muted-foreground">{channel.pendingPositions.length} 笔待确认</small> : null}</td>
@@ -150,7 +145,6 @@ function ChannelSummaryRow({ channel, group, fundOptions, fundManagers, platform
     <td className="py-3"><Money value={channel.cost || null} /></td>
     <td className="py-3"><Money value={channel.today} signed /></td>
     <td className="py-3"><Money value={channel.holdingPnl} signed /></td>
-    <td className="max-w-0 truncate py-3"><Money value={feeCost} /></td>
     <td className="whitespace-nowrap py-3 text-right"><ChannelActions channel={channel} fundOptions={fundOptions} fundManagers={fundManagers} /></td>
   </tr>;
 }
@@ -158,16 +152,6 @@ function ChannelSummaryRow({ channel, group, fundOptions, fundManagers, platform
 function ChannelActions({ channel, fundOptions, fundManagers }: { channel: HoldingChannelGroup; fundOptions: Record<string, string>; fundManagers: Record<string, string> }) {
   const editable = channel.settledPositions.filter((position) => position.dcaPlanId == null);
   return <div className="flex flex-wrap justify-end gap-1">{editable.map((position) => <span key={position.id} className="inline-flex items-center gap-1"><PositionForm initial={position} fundOptions={fundOptions} fundManagers={fundManagers} /><DeletePositionButton id={position.id} isDcaExecution={false} /></span>)}{channel.pendingPositions.filter((position) => position.dcaPlanId == null).map((position) => <ResolvePendingForm key={position.id} id={position.id} executionOn={position.executionOn} cutoffPeriod={position.cutoffPeriod} />)}</div>;
-}
-
-function feeCostForPosition(position: PositionDetail, group: HoldingGroup, summary: ManagementFeeSummary | undefined): number | null {
-  const purchaseFee = position.feeAmount;
-  if (position.status !== "settled") return purchaseFee;
-  if (!summary || summary.managementFeeCoverage.status !== "covered") return null;
-  const platformSettled = group.positions.filter((row) => row.account === position.account && row.status === "settled");
-  const platformPurchaseCost = platformSettled.reduce((sum, row) => sum + row.cost, 0);
-  const allocatedManagementFee = platformPurchaseCost > 0 ? summary.managementFeeTotal * position.cost / platformPurchaseCost : 0;
-  return purchaseFee + allocatedManagementFee;
 }
 
 function CardMetric({ label, value }: { label: string; value: React.ReactNode }) {

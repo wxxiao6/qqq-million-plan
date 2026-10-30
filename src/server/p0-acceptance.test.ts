@@ -17,7 +17,7 @@ describe("P0 验收口径", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("空仓也能看额度；动态仓可读取持仓与资产管理数据", async () => {
+  it("空仓也能看额度；动态仓可读取持仓数据", async () => {
     const { getDb } = await import("@/server/db");
     const db = getDb();
     const now = new Date().toISOString();
@@ -38,16 +38,7 @@ describe("P0 验收口径", () => {
     db.prepare(
       `INSERT INTO nav_snapshots (symbol, as_of, nav) VALUES ('016452', '2026-08-27', 10)`,
     ).run();
-    db.prepare(
-      `INSERT INTO deposits (bank, principal, rate, start_date, maturity_date, can_prepay)
-       VALUES ('招行', 20000, NULL, NULL, NULL, 0)`,
-    ).run();
-    db.prepare(
-      `INSERT INTO mortgage (id, remaining_principal, monthly_payment, remaining_terms, rate_type, payment_day)
-       VALUES (1, 5000, 3000, 120, 'fixed', NULL)`,
-    ).run();
-
-    const { getExposureSummary, listHeldSymbols, listDeposits, getMortgage } = await import(
+    const { getExposureSummary, listHeldSymbols } = await import(
       "@/server/ledger"
     );
     const nasdaq = getExposureSummary("nasdaq");
@@ -56,8 +47,6 @@ describe("P0 验收口径", () => {
     expect(nasdaq.holdingPnl).toBe(200);
     expect(listHeldSymbols()).toContain("016452");
 
-    expect(listDeposits()).toHaveLength(1);
-    expect(getMortgage()?.remainingPrincipal).toBe(5000);
   });
 });
 

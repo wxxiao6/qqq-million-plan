@@ -43,7 +43,6 @@ pnpm dev
 | `/holdings/overview` | 重定向到定投管理（旧入口） |
 | `/holdings/manage` | 持仓管理 |
 | `/quota` | 纳斯达克 QDII 基金清单 |
-| `/assets` | 资产负债明细（非一级） |
 
 备份：复制 `data/ledger.sqlite`。不要提交该文件。
 

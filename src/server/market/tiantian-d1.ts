@@ -67,14 +67,6 @@ export async function saveAgencyQuotaD1(
       source_provider=excluded.source_provider, updated_at=excluded.updated_at,
       purchase_fee_pct=excluded.purchase_fee_pct, purchase_fee_json=excluded.purchase_fee_json`,
     fund.code, fund.shareClass, quota.status, quota.dailyLimit, fund.currency, scope, bizDate, observedAt, quota.sourceUrl, observedAt, quota.purchaseFeePct, quota.purchaseFeeJson));
-    // Compute the latest applicable NAV date inside the batch transaction.
-    statements.push(bind(`INSERT INTO fund_management_fee_rates
-      (code, effective_on, annual_rate_pct, raw_value, source_url, source_provider, observed_at, status)
-      VALUES (?, COALESCE((SELECT MAX(as_of) FROM nav_snapshots WHERE symbol = ? AND as_of <= ?), ?), ?, ?, ?, 'tiantian-fund', ?, ?)
-      ON CONFLICT(code, effective_on, source_provider) DO UPDATE SET
-        annual_rate_pct=excluded.annual_rate_pct, raw_value=excluded.raw_value,
-        source_url=excluded.source_url, observed_at=excluded.observed_at, status=excluded.status`,
-    fund.code, fund.code, bizDate, bizDate, quota.managementFeePct, quota.managementFeeRaw, quota.sourceUrl, observedAt, quota.managementFeeStatus));
   }
   await db.batch(statements);
 }

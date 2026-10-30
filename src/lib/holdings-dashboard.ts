@@ -1,4 +1,4 @@
-import type { ManagementFeeSummary, PositionDetail } from "@/server/ledger";
+import type { PositionDetail } from "@/server/ledger";
 
 /** Apply the same fund and account filters to both the list and the overview. */
 export function filterHoldingPositions(positions: PositionDetail[], names: Record<string, string>, query: string, account: string): PositionDetail[] {
@@ -22,7 +22,6 @@ export type HoldingGroup = {
   pendingCash: number;
   unvaluedCount: number;
   navAsOf: string | null;
-  managementFee?: ManagementFeeSummary;
 };
 
 export type HoldingChannelGroup = {

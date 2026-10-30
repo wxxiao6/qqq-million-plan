@@ -19,7 +19,6 @@ type TiantianRateData = {
   SGZT?: string;
   MINSG?: string | number;
   MAXSG?: string | number;
-  MGREXP?: string;
   TRUSTEXP?: string;
   SALESEXP?: string;
   sg?: FeeRow[];
@@ -31,9 +30,6 @@ export type TiantianQuotaRecord = {
   dailyLimit: number | null;
   purchaseFeePct: number | null;
   purchaseFeeJson: string | null;
-  managementFeePct: number | null;
-  managementFeeRaw: string | null;
-  managementFeeStatus: "valid" | "missing" | "invalid";
   sourceUrl: string;
   rawStatus: string;
 };
@@ -115,21 +111,12 @@ export function parseTiantianQuota(code: string, value: unknown, sourceUrl: stri
   const dailyLimit = rawLimit != null && rawLimit >= 100_000_000_000 ? null : rawLimit;
   const ladder = Array.isArray(data.sg) ? data.sg : [];
   const purchaseFeePct = ladder.map((row) => percentValue(row.rate)).find((fee) => fee != null) ?? null;
-  const managementFeeRaw = data.MGREXP ?? null;
-  const managementFeePct = percentValue(managementFeeRaw ?? undefined);
   return {
     code,
     status,
     dailyLimit: status === "paused" ? null : dailyLimit,
     purchaseFeePct,
     purchaseFeeJson: ladder.length ? JSON.stringify(ladder) : null,
-    managementFeePct,
-    managementFeeRaw,
-    managementFeeStatus: managementFeeRaw == null || managementFeeRaw.trim() === ""
-      ? "missing"
-      : managementFeePct == null
-        ? "invalid"
-        : "valid",
     sourceUrl,
     rawStatus: data.SGZT ?? "",
   };
@@ -199,19 +186,10 @@ export async function syncTiantianAgencyQuota(now = new Date(), fetcher: typeof 
       effective_on=excluded.effective_on, observed_at=excluded.observed_at, source_url=excluded.source_url,
       source_provider=excluded.source_provider, updated_at=excluded.updated_at,
       purchase_fee_pct=excluded.purchase_fee_pct, purchase_fee_json=excluded.purchase_fee_json`);
-    const managementFee = db.prepare(`INSERT INTO fund_management_fee_rates
-      (code, effective_on, annual_rate_pct, raw_value, source_url, source_provider, observed_at, status)
-      VALUES (?, ?, ?, ?, ?, 'tiantian-fund', ?, ?)
-      ON CONFLICT(code, effective_on, source_provider) DO UPDATE SET
-        annual_rate_pct=excluded.annual_rate_pct, raw_value=excluded.raw_value,
-        source_url=excluded.source_url, observed_at=excluded.observed_at, status=excluded.status`);
-    const latestNavDate = db.prepare("SELECT MAX(as_of) AS asOf FROM nav_snapshots WHERE symbol = ? AND as_of <= ?");
     for (const { fund, quota } of good) {
       const scope = quota.rawStatus === "场内交易" ? "场内交易" : "日累计申购限额";
       observation.run(key, fund.code, fund.shareClass, quota.status, quota.dailyLimit, fund.currency, scope, bizDate, observedAt, quota.sourceUrl, observedAt, quota.purchaseFeePct, quota.purchaseFeeJson);
       current.run(fund.code, fund.shareClass, quota.status, quota.dailyLimit, fund.currency, scope, bizDate, observedAt, quota.sourceUrl, observedAt, quota.purchaseFeePct, quota.purchaseFeeJson);
-      const navDate = (latestNavDate.get(fund.code, bizDate) as { asOf: string | null } | undefined)?.asOf ?? bizDate;
-      managementFee.run(fund.code, navDate, quota.managementFeePct, quota.managementFeeRaw, quota.sourceUrl, observedAt, quota.managementFeeStatus);
     }
   });
   run();

@@ -27,12 +27,12 @@ function binding(db: Database.Database, failAt = -1): MarketD1 {
 const update = {
   fund: { code: "016452", shareClass: "A", currency: "CNY" as const },
   quota: { code: "016452", status: "limited" as const, dailyLimit: 10, purchaseFeePct: 0.12,
-    purchaseFeeJson: null, managementFeePct: 0.5, managementFeeRaw: "0.50%", managementFeeStatus: "valid" as const,
+    purchaseFeeJson: null,
     sourceUrl: "https://example.com/rate", rawStatus: "限大额" },
 };
 
 describe("D1 agency quota batch", () => {
-  it("updates agency data and fee date, preserves direct data, and supports retries", async () => {
+  it("updates agency data, preserves direct data, and supports retries", async () => {
     const { getDb } = await import("../db");
     const db = getDb();
     db.prepare("INSERT INTO nav_snapshots (symbol,as_of,nav,source) VALUES ('016452','2026-10-27',10,'auto')").run();
@@ -45,7 +45,6 @@ describe("D1 agency quota batch", () => {
     expect(db.prepare("SELECT count(*) AS n FROM quota_observations WHERE idempotency_key=?").get(input.key)).toEqual({ n: 1 });
     expect(db.prepare("SELECT daily_limit,source_provider,purchase_fee_pct FROM quota_current WHERE code='016452' AND channel_kind='agency'").get()).toEqual({ daily_limit: 10, source_provider: "tiantian-fund", purchase_fee_pct: 0.12 });
     expect(db.prepare("SELECT daily_limit,source_provider FROM quota_current WHERE code='016452' AND channel_kind='direct'").get()).toEqual({ daily_limit: 123, source_provider: "bot" });
-    expect(db.prepare("SELECT annual_rate_pct FROM fund_management_fee_rates WHERE code='016452' AND effective_on='2026-10-27'").get()).toEqual({ annual_rate_pct: 0.5 });
   });
 
   it("rolls back the run and all observations when any statement fails", async () => {

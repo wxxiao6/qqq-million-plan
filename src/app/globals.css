@@ -31,7 +31,6 @@
   --limit-wash: #f4e9d5;
   --paused-wash: #f3e2df;
   --dynamic-bar: #526f91;
-  --deposit-bar: #66816d;
   --cash-bar: #b68a45;
   --liability-bar: #a65a52;
 }
@@ -63,7 +62,6 @@
   --color-limit-wash: var(--limit-wash);
   --color-paused-wash: var(--paused-wash);
   --color-dynamic-bar: var(--dynamic-bar);
-  --color-deposit-bar: var(--deposit-bar);
   --color-cash-bar: var(--cash-bar);
   --color-liability-bar: var(--liability-bar);
   --radius-sm: 10px;

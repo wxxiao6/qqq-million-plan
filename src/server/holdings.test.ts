@@ -97,7 +97,7 @@ describe("动态仓资产类型", () => {
     expect(view.empty).toBe(false);
     expect(view.enabled).toEqual(["nasdaq"]);
     expect(view.nasdaq.hasSettled).toBe(false);
-    expect(view.remainingTypes).toEqual(["gold", "deposit", "crypto"]);
+    expect(view.remainingTypes).toEqual(["gold", "crypto"]);
   });
 
   it("016452 能拉到简称和代销剩余额度；未知代码找不到", async () => {
@@ -210,7 +210,7 @@ describe("动态仓资产类型", () => {
     expect(lot?.today).toBeCloseTo(100 * (10 - 10 / 1.01));
   });
 
-  it("加密货币计入动态市值；存款进固收不进动态", async () => {
+  it("加密货币计入动态市值", async () => {
     const { getDb } = await import("@/server/db");
     const db = getDb();
     const now = new Date().toISOString();
@@ -221,10 +221,7 @@ describe("动态仓资产类型", () => {
     db.prepare(
       `INSERT INTO nav_snapshots (symbol, as_of, nav, source) VALUES ('BTC', '2026-08-27', 12000, 'auto')`,
     ).run();
-    db.prepare(
-      `INSERT INTO deposits (bank, principal, rate, start_date, maturity_date, can_prepay)
-       VALUES ('招行', 5000, NULL, NULL, NULL, 0)`,
-    ).run();
+
 
     const { getDynamicMarketValue } = await import("@/server/ledger");
     expect(getDynamicMarketValue()).toBe(12000);
@@ -232,11 +229,9 @@ describe("动态仓资产类型", () => {
     const { getHoldingsView } = await import("@/server/holdings");
     const view = getHoldingsView();
     expect(view.enabled).toContain("crypto");
-    expect(view.enabled).toContain("deposit");
     expect(view.crypto.marketValue).toBe(12000);
     expect(view.dynamic.marketValue).toBe(12000);
     expect(view.dynamic.cost).toBe(10000);
-    expect(view.depositPv).toBe(5000);
   });
 
 });

@@ -11,12 +11,10 @@ import { getDcaBoard, type DcaBoard } from "../dca";
 import {
   getExposureSummary,
   getDynamicSummary,
-  listDeposits,
   listNavSnapshots,
   listNasdaqPlatformGroups,
   listPositions,
   writeAutoNav,
-  type Deposit,
   type ExposureSummary,
   type NasdaqPlatformGroup,
 } from "../ledger";
@@ -36,8 +34,6 @@ export type HoldingsView = {
   nasdaq: ExposureSummary;
   gold: ExposureSummary;
   crypto: ExposureSummary;
-  deposits: Deposit[];
-  depositPv: number | null;
   nasdaqGroups: NasdaqPlatformGroup[];
   dcaNasdaq: DcaBoard;
 };
@@ -59,7 +55,6 @@ export function resolveEnabledTypes(): AssetType[] {
       set.add(row.exposure);
     }
   }
-  if (listDeposits().length > 0) set.add("deposit");
   return ASSET_TYPES.filter((type) => set.has(type));
 }
 
@@ -67,8 +62,6 @@ export function getHoldingsView(): HoldingsView {
   const enabled = resolveEnabledTypes();
   const remainingTypes = ASSET_TYPES.filter((type) => !enabled.includes(type));
   const market = getMarketSnapshot();
-  const deposits = listDeposits();
-  const depositPv = deposits.reduce((sum, row) => sum + row.principal, 0);
 
   return {
     empty: enabled.length === 0,
@@ -80,8 +73,6 @@ export function getHoldingsView(): HoldingsView {
     nasdaq: getExposureSummary("nasdaq"),
     gold: getExposureSummary("gold"),
     crypto: getExposureSummary("crypto"),
-    deposits,
-    depositPv: deposits.length > 0 ? depositPv : null,
     nasdaqGroups: listNasdaqPlatformGroups(),
     dcaNasdaq: getDcaBoard(),
   };
