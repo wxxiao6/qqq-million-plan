@@ -142,7 +142,7 @@ function ChannelSummaryRow({ channel, group, fundOptions, fundManagers }: { chan
     <td className="py-3"><span className="font-medium">{label}</span>{channel.pendingPositions.length > 0 ? <small className="block text-xs text-muted-foreground">{channel.pendingPositions.length} 笔待确认</small> : null}</td>
     <td className="py-3"><Money value={marketValueIncludingPending(channel.marketValue, channel.pendingCash)} /></td>
     <td className="py-3"><Money value={channel.pendingCash} /></td>
-    <td className="py-3"><Money value={channel.cost || null} /></td>
+    <td className="py-3"><Money value={(channel.cost + channel.pendingCash) || null} /></td>
     <td className="py-3"><Money value={channel.today} signed /></td>
     <td className="py-3"><Money value={channel.holdingPnl} signed /></td>
     <td className="whitespace-nowrap py-3 text-right"><ChannelActions channel={channel} fundOptions={fundOptions} fundManagers={fundManagers} /></td>
