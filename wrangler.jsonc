@@ -1,10 +1,11 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "qqq-million-plan",
-  "main": ".open-next/worker.js",
+  "main": "./worker.mjs",
   "compatibility_date": "2026-10-29",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
+  "triggers": { "crons": ["0 18 * * *"] },
   "routes": [{ "pattern": "qqq-million-plan.cc.cd", "custom_domain": true }],
   "observability": { "enabled": true, "logs": { "enabled": true, "head_sampling_rate": 1 }, "traces": { "enabled": true, "head_sampling_rate": 0.01 } },
   "vars": { "CLOUDFLARE_RUNTIME": "1", "SITE_AUTH_REQUIRED": "0" },
