@@ -17,8 +17,7 @@ it("runs Monday jobs once after success and retries partial work independently",
       const args = process.argv.slice(2), endpoint = new URL(args.at(-1)).pathname, body = JSON.parse(args[args.indexOf('--data') + 1]);
       appendFileSync(process.env.TEST_CALL_LOG, endpoint + ':' + (body.phase || 'run') + '\\n');
       let result;
-      if (endpoint.endsWith('/reconcile')) result = {ok:true};
-      else if (body.phase === 'init' || !body.phase) result = {chunked:true,runId:'run',bizDate:'2026-10-26',observedAt:'2026-10-26T14:00:00Z'};
+      if (body.phase === 'init' || !body.phase) result = {chunked:true,runId:'run',bizDate:'2026-10-26',observedAt:'2026-10-26T14:00:00Z'};
       else if (body.phase === 'finish') result = {ok:true};
       else result = {requested:1,success:process.env.TEST_INFO_FAILURE && endpoint.endsWith('/info') ? 0 : 1,failed:process.env.TEST_INFO_FAILURE && endpoint.endsWith('/info') ? [{code:'000001',error:'offline'}] : [],next:null};
       process.stdout.write(JSON.stringify(result) + '\\n200');`);
@@ -28,6 +27,7 @@ it("runs Monday jobs once after success and retries partial work independently",
     expect(JSON.parse(readFileSync(path.join(dir, "state.json"), "utf8"))).toEqual({ lastSuccessfulRefresh: "2026-10-26" });
     expect(run(false).status).toBe(0);
     const calls = readFileSync(log, "utf8").trim().split("\n");
+    expect(calls.some((line) => line.startsWith("/api/jobs/reconcile:"))).toBe(false);
     expect(calls.filter((line) => line === "/api/jobs/refresh:finish")).toHaveLength(1);
     expect(calls.filter((line) => line === "/api/jobs/info:finish")).toHaveLength(2);
     expect(JSON.parse(readFileSync(path.join(dir, "state.json"), "utf8"))).toEqual({ lastSuccessfulRefresh: "2026-10-26", lastSuccessfulInfo: "2026-10-26" });

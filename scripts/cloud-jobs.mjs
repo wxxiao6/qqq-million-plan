@@ -53,7 +53,6 @@ try {
     if (split < 0 || status < 200 || status >= 300) throw new Error(`${endpoint} returned ${status || "invalid response"}`);
     return JSON.parse(result.slice(0, split));
   };
-  await call("/api/jobs/reconcile");
   const now = new Date();
   const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
   const hour = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Shanghai", hour: "2-digit", hour12: false }).format(now);
