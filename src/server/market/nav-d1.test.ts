@@ -25,6 +25,28 @@ function binding(db: Database.Database, failAt = -1): MarketD1 {
 const record = { code: "016452", navDate: "2026-10-28", nav: 2, dailyChangePct: 1, sourceUrl: "https://example.com" };
 
 describe("D1 NAV chunk", () => {
+  it("settles automatic orders with their NAV on refresh while leaving later and manual orders pending", async () => {
+    const { getDb } = await import("../db");
+    const db = getDb();
+    const insert = db.prepare(`INSERT INTO positions (account,exposure,symbol,cost,status,execution_on,cutoff_period,auto_generated,updated_at)
+      VALUES ('gf_direct','nasdaq','021000',200,'pending',?,?,?,'2026-10-30')`);
+    for (const day of ['2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30']) insert.run(day, 'before_15', 1);
+    insert.run('2026-10-28', 'before_15', 0);
+    insert.run('2026-10-28', 'after_15', 1);
+    db.prepare("INSERT INTO nav_snapshots(symbol,as_of,nav,source) VALUES ('021000','2026-10-27',2,'real')").run();
+    await saveNavChunkD1(binding(db), [{ ...record, code: '021000' }], 'tiantian', '2026-10-30T06:00:00Z');
+    expect(db.prepare("SELECT execution_on,cutoff_period,auto_generated,status,shares FROM positions WHERE symbol='021000' ORDER BY id").all()).toEqual([
+      { execution_on: '2026-10-27', cutoff_period: 'before_15', auto_generated: 1, status: 'settled', shares: 100 },
+      { execution_on: '2026-10-28', cutoff_period: 'before_15', auto_generated: 1, status: 'settled', shares: 100 },
+      { execution_on: '2026-10-29', cutoff_period: 'before_15', auto_generated: 1, status: 'pending', shares: null },
+      { execution_on: '2026-10-30', cutoff_period: 'before_15', auto_generated: 1, status: 'pending', shares: null },
+      { execution_on: '2026-10-28', cutoff_period: 'before_15', auto_generated: 0, status: 'pending', shares: null },
+      { execution_on: '2026-10-28', cutoff_period: 'after_15', auto_generated: 1, status: 'pending', shares: null },
+    ]);
+    db.prepare("DELETE FROM positions WHERE symbol='021000'").run();
+    db.prepare("DELETE FROM nav_snapshots WHERE symbol='021000'").run();
+    db.prepare("DELETE FROM fund_nav_history WHERE code='021000'").run();
+  });
   it("saves history and held snapshots, preserves manual NAV, and does not create unheld snapshots", async () => {
     const { getDb } = await import("../db");
     const db = getDb();

@@ -43,8 +43,8 @@ describe("D1 automatic DCA reconciliation", () => {
     expect(target.prepare(positionSql).all()).toEqual(source.prepare(positionSql).all());
     expect(target.prepare("SELECT execution_on,status FROM positions WHERE dca_plan_id=? ORDER BY execution_on").all(saved.id)).toEqual([
       { execution_on: "2026-10-08", status: "settled" },
-      { execution_on: "2026-10-09", status: "pending" },
-      { execution_on: "2026-10-12", status: "pending" },
+      { execution_on: "2026-10-09", status: "settled" },
+      { execution_on: "2026-10-12", status: "settled" },
     ]);
     expect(target.prepare(planSql).get(saved.id)).toEqual(source.prepare(planSql).get(saved.id));
     await reconcileDueDcaPlanD1(d1, saved.id, "2026-10-12");

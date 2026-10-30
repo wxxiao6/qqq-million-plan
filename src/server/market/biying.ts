@@ -1,6 +1,7 @@
 import { beijingTodayISO } from "@/lib/format";
 import { getDb } from "../db";
 import { getDynamicMarketValue } from "../ledger";
+import { updateAutoPendingEstimates } from "../ledger/recent-pending";
 import { writeJob } from "../jobs/status";
 import type { FundNavSource } from "./source";
 
@@ -119,7 +120,10 @@ export async function syncNasdaqFundNav(now = new Date(), fetcher: typeof fetch 
     for (const item of good) {
       history.run(item.code, item.navDate, item.nav, item.dailyChangePct, source.name, item.sourceUrl, now.toISOString());
       current.run(item.code, item.nav, item.navDate, item.dailyChangePct, item.sourceUrl, now.toISOString());
-      if (held.has(item.code)) snapshot.run(item.code, item.navDate, item.nav, source.name, item.dailyChangePct, item.sourceUrl);
+      if (held.has(item.code)) {
+        snapshot.run(item.code, item.navDate, item.nav, source.name, item.dailyChangePct, item.sourceUrl);
+        updateAutoPendingEstimates(item.code, bizDate);
+      }
     }
     const marketValue = getDynamicMarketValue(bizDate);
     if (marketValue != null) db.prepare(`INSERT INTO portfolio_snapshots (as_of,dynamic_mv) VALUES (?,?) ON CONFLICT(as_of) DO UPDATE SET dynamic_mv=excluded.dynamic_mv`).run(bizDate, marketValue);

@@ -135,13 +135,11 @@ export function autoEstimateStatement(db: ReconcileD1, symbol: string, today: st
       FROM positions p WHERE p.symbol=? AND p.status='pending' AND p.auto_generated=1 AND EXISTS (SELECT 1 FROM history)
     ), resolved AS MATERIALIZED (
       SELECT chosen.*, COALESCE((SELECT nav FROM history WHERE as_of=selected_date),
-        CASE WHEN selected_date=t_date THEN t_nav END) AS selected_nav,
-        (SELECT COUNT(*) FROM history)=3 AND selected_date<=(SELECT MIN(as_of) FROM history) AS aged
+        CASE WHEN selected_date=t_date THEN t_nav END) AS selected_nav
       FROM chosen
     )
     UPDATE positions SET shares=ROUND(resolved.cost/resolved.selected_nav,2), t_nav=resolved.selected_nav,
-      t_date=resolved.selected_date, status=CASE WHEN resolved.aged THEN 'settled' ELSE 'pending' END,
-      recorded_on=CASE WHEN resolved.aged THEN resolved.selected_date ELSE positions.recorded_on END,
-      confirmed_on=CASE WHEN resolved.aged THEN ? ELSE positions.confirmed_on END, updated_at=?
+      t_date=resolved.selected_date, status='settled', recorded_on=resolved.selected_date,
+      confirmed_on=?, updated_at=?
     FROM resolved WHERE positions.id=resolved.id AND resolved.selected_nav>0`).bind(symbol, today, symbol, today, now);
 }

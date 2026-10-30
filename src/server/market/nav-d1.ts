@@ -1,5 +1,7 @@
 import type { MarketD1 } from "./tiantian-d1";
 import type { FundNavRecord, FundNavSource } from "./source";
+import { beijingTodayISO } from "@/lib/format";
+import { autoEstimateStatement, type ReconcileD1 } from "../ledger/reconcile-d1";
 
 export const NAV_CHUNK_SIZE = 25;
 
@@ -45,6 +47,7 @@ export async function saveNavChunkD1(db: MarketD1, records: FundNavRecord[], sou
       ON CONFLICT(symbol,as_of) DO UPDATE SET nav=excluded.nav,source=excluded.source,
       nav_change_pct=excluded.nav_change_pct,source_url=excluded.source_url WHERE nav_snapshots.source <> 'manual'`)
       .bind(item.code, item.navDate, item.nav, source, item.dailyChangePct, item.sourceUrl, item.code, item.code));
+    statements.push(autoEstimateStatement(db as unknown as ReconcileD1, item.code, beijingTodayISO(new Date(observedAt)), observedAt));
   }
   if (statements.length) await db.batch(statements);
 }
