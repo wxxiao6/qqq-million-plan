@@ -1,9 +1,13 @@
 import type Database from "better-sqlite3";
-import { listNasdaqFunds } from "./catalog";
+import { listNasdaqFunds, type CatalogRow } from "./catalog";
 
 /** All consumers read the current structured quota projection. */
 export function listEffectiveQuotaCells(database: Database.Database) {
-  return listNasdaqFunds(database).flatMap((fund) => {
+  return effectiveQuotaCells(listNasdaqFunds(database));
+}
+
+export function effectiveQuotaCells(funds: CatalogRow[]) {
+  return funds.flatMap((fund) => {
     return (["direct", "agency"] as const).flatMap((channel) => {
       const direct = channel === "direct";
       const availability = direct ? fund.directStatus : fund.agencyStatus;

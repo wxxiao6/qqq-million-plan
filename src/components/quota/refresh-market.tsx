@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { refreshMarket } from "@/lib/refresh-market";
 
 /** 触发天天基金净值与代销额度刷新；直销额度由外部机器人写入。 */
 export function RefreshMarketButton() {
@@ -15,13 +16,7 @@ export function RefreshMarketButton() {
     setPending(true);
     setError(null);
     try {
-      const response = await fetch("/api/market/refresh", { method: "POST" });
-      const result = (await response.json()) as {
-        ok: boolean;
-        partial?: boolean;
-        error?: string;
-        failed?: Array<{ code: string; error: string }>;
-      };
+      const result = await refreshMarket();
       router.refresh();
       if (!result.ok) {
         setError(

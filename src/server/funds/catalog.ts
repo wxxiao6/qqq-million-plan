@@ -300,8 +300,7 @@ export type CatalogRow = CatalogFund & {
   directQuoteSourceUrl: string | null;
 };
 
-export function listNasdaqFunds(database: Database.Database): CatalogRow[] {
-  const rows = database.prepare(`
+export const CATALOG_ROWS_SQL = `
     SELECT f.code, f.name, f.manager, f.theme, f.product_type AS productType,
            f.share_class AS shareClass, f.market_type AS marketType, f.min_order AS minOrder,
            f.venue, f.currency, f.source_url AS sourceUrl,
@@ -344,13 +343,18 @@ export function listNasdaqFunds(database: Database.Database): CatalogRow[] {
     LEFT JOIN quota_current qc_direct ON qc_direct.code=f.code AND qc_direct.share_class=f.share_class AND qc_direct.channel_kind='direct'
     GROUP BY f.code
     ORDER BY CASE WHEN f.currency='USD' THEN 1 ELSE 0 END, f.theme, f.venue, f.name, f.code
-  `).all() as CatalogRow[];
-  const sellers = database.prepare(`
+  `;
+
+export const CATALOG_SELLERS_SQL = `
     SELECT code, seller, evidence_url AS sourceUrl
     FROM nasdaq_fund_sales_channels
     WHERE channel_kind='agency' AND verification_status='verified'
     ORDER BY code, seller
-  `).all() as Array<{ code: string; seller: string; sourceUrl: string | null }>;
+  `;
+
+type CatalogSeller = { code: string; seller: string; sourceUrl: string | null };
+
+export function assembleNasdaqFunds(rows: CatalogRow[], sellers: CatalogSeller[]): CatalogRow[] {
   const byCode = new Map<string, CatalogRow["agencySellers"]>();
   for (const seller of sellers) {
     const list = byCode.get(seller.code) ?? [];
@@ -363,4 +367,10 @@ export function listNasdaqFunds(database: Database.Database): CatalogRow[] {
     const deduplicated = hasFormalTiantian ? list.filter((seller) => seller.name !== "天天基金") : list;
     return { ...row, agencySellers: deduplicated.sort((a, b) => Number(b.name.includes("蚂蚁")) - Number(a.name.includes("蚂蚁"))) };
   });
+}
+
+export function listNasdaqFunds(database: Database.Database): CatalogRow[] {
+  const rows = database.prepare(CATALOG_ROWS_SQL).all() as CatalogRow[];
+  const sellers = database.prepare(CATALOG_SELLERS_SQL).all() as CatalogSeller[];
+  return assembleNasdaqFunds(rows, sellers);
 }

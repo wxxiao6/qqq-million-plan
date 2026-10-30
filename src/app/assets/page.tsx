@@ -15,13 +15,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getCash, getMortgage, listDeposits } from "@/server/ledger";
+import { readAssetsD1 } from "@/server/ledger/assets-d1";
+import type { ReconcileD1 } from "@/server/ledger/reconcile-d1";
 
 export const dynamic = "force-dynamic";
 
-export default function AssetsPage() {
-  const deposits = listDeposits();
-  const mortgage = getMortgage();
-  const cash = getCash();
+export default async function AssetsPage() {
+  const data = process.env.CLOUDFLARE_RUNTIME === "1"
+    ? await (async () => {
+      const { getCloudflareContext } = await import("@opennextjs/cloudflare");
+      return readAssetsD1((getCloudflareContext().env as unknown as { DB: ReconcileD1 }).DB);
+    })()
+    : { deposits: listDeposits(), mortgage: getMortgage(), cash: getCash() };
+  const { deposits, mortgage, cash } = data;
 
   return (
     <>

@@ -8,8 +8,8 @@ import {
 } from "@/components/ui/table";
 import { groupFundsByManager, isPaused, sortOtcFundGroups, type FundSort, type SalesChannel } from "@/lib/nasdaq-fund-sort";
 import { estimatePurchasableQuota, sumVerifiedQuota } from "@/lib/nasdaq-quota-summary";
-import { getDb } from "@/server/db";
-import { listNasdaqFunds, type CatalogRow } from "@/server/funds/catalog";
+import type { CatalogRow } from "@/server/funds/catalog";
+import { listNasdaqFundsForRuntime } from "@/server/funds/catalog-runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -196,7 +196,7 @@ export default async function QuotaPage({
   const selectedChannel = params.channel === "direct" ? "direct" : "agency";
   const selectedUsdChannel = params.usdChannel === "direct" ? "direct" : "agency";
   const sort: FundSort = params.sort === "quota_asc" || params.sort === "tracking_asc" || params.sort === "tracking_desc" ? params.sort : "quota";
-  const allFunds = listNasdaqFunds(getDb());
+  const allFunds = await listNasdaqFundsForRuntime();
   const visibleUniverse = allFunds.filter((fund) => fund.venue === "exchange" ||
     (fund.currency === "USD" ? fund[selectedUsdChannel === "agency" ? "agencyStatus" : "directStatus"] :
       fund[selectedChannel === "agency" ? "agencyStatus" : "directStatus"]) !== "unavailable");

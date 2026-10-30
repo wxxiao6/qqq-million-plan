@@ -88,16 +88,15 @@ export type ChannelRow = {
   marketValue: number | null;
 };
 
-function latestNavMap(): Record<string, NavSnapshot> {
-  const rows = getDb()
-    .prepare(
-      `SELECT n.symbol, n.as_of AS asOf, n.nav, n.nav_change_pct AS navChangePct
+export const LATEST_NAV_SQL = `SELECT n.symbol, n.as_of AS asOf, n.nav, n.nav_change_pct AS navChangePct
        FROM nav_snapshots n
        INNER JOIN (
          SELECT symbol, MAX(as_of) AS as_of FROM nav_snapshots GROUP BY symbol
-       ) latest ON n.symbol = latest.symbol AND n.as_of = latest.as_of`,
-    )
-    .all() as NavSnapshot[];
+       ) latest ON n.symbol = latest.symbol AND n.as_of = latest.as_of`;
+export const PRIOR_NAV_SQL = `SELECT symbol, as_of AS asOf, nav FROM nav_snapshots ORDER BY symbol, as_of DESC`;
+
+function latestNavMap(): Record<string, NavSnapshot> {
+  const rows = getDb().prepare(LATEST_NAV_SQL).all() as NavSnapshot[];
   const out: Record<string, NavSnapshot> = {};
   for (const row of rows) out[row.symbol] = row;
   return out;
@@ -105,12 +104,11 @@ function latestNavMap(): Record<string, NavSnapshot> {
 
 /** 每个代码「最近净值日」之前的那一个净值。没有上一档则为空。 */
 function priorNavMap(): Record<string, number> {
-  const rows = getDb()
-    .prepare(
-      `SELECT symbol, as_of AS asOf, nav FROM nav_snapshots
-       ORDER BY symbol, as_of DESC`,
-    )
-    .all() as NavSnapshot[];
+  const rows = getDb().prepare(PRIOR_NAV_SQL).all() as NavSnapshot[];
+  return priorNavMapFromRows(rows);
+}
+
+function priorNavMapFromRows(rows: NavSnapshot[]): Record<string, number> {
   const seenLatest = new Set<string>();
   const out: Record<string, number> = {};
   for (const row of rows) {
@@ -127,7 +125,7 @@ function navForPosition(position: Position, snapshot: NavSnapshot | undefined): 
   return snapshot && (!position.tDate || snapshot.asOf >= position.tDate) ? snapshot.nav : null;
 }
 
-function mapPosition(row: {
+export function mapPosition(row: {
   id: number;
   account: Account;
   exposure: Exposure;
@@ -175,15 +173,13 @@ function mapPosition(row: {
   };
 }
 
-export function listPositions(): Position[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT id, account, exposure, symbol, shares, cost, status, note, recorded_on, expected_confirm_on,
+export const POSITIONS_SQL = `SELECT id, account, exposure, symbol, shares, cost, status, note, recorded_on, expected_confirm_on,
               dca_plan_id, cash_debited, fee_amount, t_nav, confirmed_on
               , execution_on, cutoff_period, t_date, order_origin, closed_on, auto_generated
-       FROM positions ORDER BY id`,
-    )
-    .all() as Array<Parameters<typeof mapPosition>[0]>;
+       FROM positions ORDER BY id`;
+
+export function listPositions(): Position[] {
+  const rows = getDb().prepare(POSITIONS_SQL).all() as Array<Parameters<typeof mapPosition>[0]>;
   return rows.map(mapPosition);
 }
 
@@ -191,7 +187,16 @@ export function listPositions(): Position[] {
 export function listPositionDetails(): PositionDetail[] {
   const navs = latestNavMap();
   const priors = priorNavMap();
-  return listPositions().map((position) => {
+  return mapPositionDetails(listPositions(), navs, priors);
+}
+
+export function buildPositionDetails(positions: Position[], latest: NavSnapshot[], history: NavSnapshot[]): PositionDetail[] {
+  const navs = Object.fromEntries(latest.map((row) => [row.symbol, row]));
+  return mapPositionDetails(positions, navs, priorNavMapFromRows(history));
+}
+
+function mapPositionDetails(positions: Position[], navs: Record<string, NavSnapshot>, priors: Record<string, number>): PositionDetail[] {
+  return positions.map((position) => {
     const snapshot = navs[position.symbol];
     const settled = position.status === "settled";
     const nav = navForPosition(position, snapshot);
@@ -213,16 +218,16 @@ export function listPositionDetails(): PositionDetail[] {
   });
 }
 
+export const NASDAQ_HOLDING_NAMES_SQL = "SELECT code, name FROM nasdaq_funds WHERE currency = 'CNY'";
+
 export function listNasdaqHoldingNames(): Record<string, string> {
   const rows = getDb()
-    .prepare("SELECT code, name FROM nasdaq_funds WHERE currency = 'CNY'")
+    .prepare(NASDAQ_HOLDING_NAMES_SQL)
     .all() as Array<{ code: string; name: string }>;
   return Object.fromEntries(rows.map((row) => [row.code, row.name]));
 }
 
-export function listNasdaqHoldingManagers(): Record<string, string> {
-  const rows = getDb()
-    .prepare(`
+export const NASDAQ_HOLDING_MANAGERS_SQL = `
       SELECT f.code,
              COALESCE(
                (
@@ -239,8 +244,10 @@ export function listNasdaqHoldingManagers(): Record<string, string> {
              ) AS manager
       FROM nasdaq_funds f
       WHERE f.currency = 'CNY' AND f.manager IS NOT NULL
-    `)
-    .all() as Array<{ code: string; manager: string }>;
+    `;
+
+export function listNasdaqHoldingManagers(): Record<string, string> {
+  const rows = getDb().prepare(NASDAQ_HOLDING_MANAGERS_SQL).all() as Array<{ code: string; manager: string }>;
   return Object.fromEntries(rows.map((row) => [row.code, row.manager]));
 }
 

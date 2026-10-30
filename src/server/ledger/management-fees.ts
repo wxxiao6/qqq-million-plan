@@ -24,7 +24,7 @@ export type ManagementFeeSummary = {
   lastRateSourceUrl: string | null;
 };
 
-type NavRow = { symbol: string; as_of: string; nav: number };
+export type NavRow = { symbol: string; as_of: string; nav: number };
 type RateRow = {
   code: string;
   effective_on: string;
@@ -35,7 +35,7 @@ type RateRow = {
   observed_at: string;
   status: "valid" | "missing" | "invalid";
 };
-type FeeState = {
+export type FeeState = {
   symbol: string;
   account: Account;
   estimatedAmount: number;
@@ -158,6 +158,17 @@ function accrueGroup(
   navs: NavRow[],
   entries: ManagementFeeEntry[],
 ): FeeState | null {
+  const result = calculateGroupAccrual(positions, symbol, account, asOf, rates, navs, entries, readState(symbol, account));
+  if (!result) return null;
+  if (result.changed) writeState(result.state);
+  return result.state;
+}
+
+/** Pure accrual shared by SQLite and D1 callers; persistence is handled by the caller. */
+export function calculateGroupAccrual(
+  positions: Position[], symbol: string, account: Account, asOf: string,
+  rates: ManagementFeeRate[], navs: NavRow[], entries: ManagementFeeEntry[], initial: FeeState | null,
+): { state: FeeState; changed: boolean } | null {
   const groupPositions = positions.filter((position) =>
     position.exposure === "nasdaq" && position.status === "settled" &&
     position.symbol === symbol && position.account === account,
@@ -165,7 +176,7 @@ function accrueGroup(
   if (!groupPositions.length) return null;
   const start = groupPositions.map(positionStartDate).filter((date): date is string => Boolean(date)).sort()[0];
   if (!start) return null;
-  const state = readState(symbol, account) ?? {
+  const state: FeeState = initial ? { ...initial } : {
     symbol,
     account,
     estimatedAmount: 0,
@@ -199,8 +210,7 @@ function accrueGroup(
     state.lastNavDate = nav.as_of;
     changed = true;
   }
-  if (changed) writeState(state);
-  return state;
+  return { state, changed };
 }
 
 function groupKeys(positions: Position[]) {
@@ -294,9 +304,19 @@ export function getManagementFeeSummary(input: {
     const [symbol, account] = key.split(":");
     return accumulated.result.get(key) ?? readState(symbol, account as Account);
   }).filter((state): state is FeeState => Boolean(state));
+  const rawMarketValue = input.rawMarketValue ?? latestMarketValue(positions, asOf);
+  return buildManagementFeeSummary(input, positions, states, accumulated.navs, accumulated.rates, rawMarketValue);
+}
+
+/** Assemble a summary from a consistent snapshot without accessing storage. */
+export function buildManagementFeeSummary(
+  input: { symbol?: string; cost?: number }, positions: Position[], states: FeeState[], navs: NavRow[],
+  rates: ManagementFeeRate[], rawMarketValue: number | null,
+): ManagementFeeSummary {
+  const keys = groupKeys(positions);
   const eligibleGroups = keys.length;
   const latestBySymbol = new Map<string, string>();
-  for (const nav of accumulated.navs) {
+  for (const nav of navs) {
     const current = latestBySymbol.get(nav.symbol);
     if (!current || nav.as_of > current) latestBySymbol.set(nav.symbol, nav.as_of);
   }
@@ -313,10 +333,9 @@ export function getManagementFeeSummary(input: {
   const managementFeeEstimated = states.reduce((sum, state) => sum + state.estimatedAmount, 0);
   const managementFeeActual = states.reduce((sum, state) => sum + state.actualAmount, 0);
   const managementFeeTotal = managementFeeEstimated + managementFeeActual;
-  const rawMarketValue = input.rawMarketValue ?? latestMarketValue(positions, asOf);
   const reconciledMarketValue = coverage.status === "covered" && rawMarketValue != null ? rawMarketValue - managementFeeTotal : null;
   const reconciledHoldingPnl = reconciledMarketValue != null && input.cost != null ? reconciledMarketValue - input.cost : null;
-  const lastRate = [...accumulated.rates].sort((a, b) => a.observedAt.localeCompare(b.observedAt)).at(-1);
+  const lastRate = [...rates].sort((a, b) => a.observedAt.localeCompare(b.observedAt)).at(-1);
   return {
     symbol: input.symbol ?? null,
     rawMarketValue,

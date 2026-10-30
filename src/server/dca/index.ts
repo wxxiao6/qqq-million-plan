@@ -41,7 +41,7 @@ function validateExecution(input: DcaExecutionInput | null | undefined): string 
   return null;
 }
 
-type PlanRow = {
+export type PlanRow = {
   id: number;
   exposure: "nasdaq";
   symbol: string;
@@ -65,7 +65,7 @@ type PlanRow = {
   note: string | null;
 };
 
-type UniverseRow = {
+export type UniverseRow = {
   symbol: string;
   share_class: DcaShareClass;
   name: string;
@@ -73,7 +73,7 @@ type UniverseRow = {
   market_type: "otc" | "etf" | "lof";
 };
 
-type CellRow = {
+export type CellRow = {
   symbol: string;
   share_class: string;
   channel_kind: DcaChannelKind;
@@ -81,16 +81,17 @@ type CellRow = {
   daily_limit: number | null;
 };
 
-function loadCandidates(): DcaShareCandidate[] {
-  const universe = getDb()
-    .prepare(
-      `SELECT code AS symbol, share_class, name
+export const DCA_UNIVERSE_SQL = `SELECT code AS symbol, share_class, name
        FROM nasdaq_funds
        WHERE currency = 'CNY' AND market_type = 'otc'
-       ORDER BY code, share_class`,
-    )
-    .all() as UniverseRow[];
-  const cells = listEffectiveQuotaCells(getDb());
+       ORDER BY code, share_class`;
+
+function loadCandidates(): DcaShareCandidate[] {
+  const universe = getDb().prepare(DCA_UNIVERSE_SQL).all() as UniverseRow[];
+  return buildDcaCandidates(universe, listEffectiveQuotaCells(getDb()));
+}
+
+export function buildDcaCandidates(universe: UniverseRow[], cells: CellRow[]): DcaShareCandidate[] {
   const cellMap = new Map<string, CellRow>();
   for (const cell of cells) {
     cellMap.set(
@@ -172,21 +173,23 @@ export function listDcaShareCandidates(): DcaShareCandidate[] {
   return loadCandidates();
 }
 
-export function listDcaPlans(): DcaPlanView[] {
-  const candidates = loadCandidates();
-  const rows = getDb()
-    .prepare(
-      `SELECT p.id, p.exposure, p.symbol, p.share_class, f.name, p.channel_kind, p.account,
+export const DCA_PLANS_SQL = `SELECT p.id, p.exposure, p.symbol, p.share_class, f.name, p.channel_kind, p.account,
               p.amount, p.invested_total, p.fee_kind, p.fee_value, p.frequency, p.weekday,
               p.month_day, p.start_date, p.next_debit_date, p.imported_through, p.cutoff_period, p.status, p.ended_at, p.note
-       FROM dca_plans p
-       LEFT JOIN nasdaq_funds f ON f.code = p.symbol
-       WHERE p.exposure = 'nasdaq'
-       ORDER BY p.id`,
-    )
-    .all() as PlanRow[];
-  const executions = getDb().prepare(`SELECT dca_plan_id, COALESCE(execution_on, recorded_on) AS date
-    FROM positions WHERE dca_plan_id IS NOT NULL AND status IN ('pending', 'settled')`).all() as { dca_plan_id: number; date: string | null }[];
+       FROM dca_plans p LEFT JOIN nasdaq_funds f ON f.code = p.symbol
+       WHERE p.exposure = 'nasdaq' ORDER BY p.id`;
+export const DCA_RECORDED_DATES_SQL = `SELECT dca_plan_id, COALESCE(execution_on, recorded_on) AS date
+    FROM positions WHERE dca_plan_id IS NOT NULL AND status IN ('pending', 'settled')`;
+export type DcaRecordedDate = { dca_plan_id: number; date: string | null };
+
+export function listDcaPlans(): DcaPlanView[] {
+  const candidates = loadCandidates();
+  const rows = getDb().prepare(DCA_PLANS_SQL).all() as PlanRow[];
+  const executions = getDb().prepare(DCA_RECORDED_DATES_SQL).all() as DcaRecordedDate[];
+  return buildDcaPlans(rows, candidates, executions);
+}
+
+export function buildDcaPlans(rows: PlanRow[], candidates: DcaShareCandidate[], executions: DcaRecordedDate[]): DcaPlanView[] {
   const recordedDates = new Map<number, string[]>();
   for (const execution of executions) {
     if (!execution.date) continue;
@@ -239,20 +242,21 @@ export function listDcaFeeDetails(): DcaFeeDetail[] {
   return listDcaExecutionHistory().filter((record) => record.status === "pending" || record.status === "settled");
 }
 
-export function listDcaExecutionHistory(): DcaFeeDetail[] {
-  return getDb()
-    .prepare(
-      `SELECT p.id AS position_id, p.dca_plan_id, p.symbol, p.account,
+export const DCA_HISTORY_SQL = `SELECT p.id AS position_id, p.dca_plan_id, p.symbol, p.account,
               p.recorded_on, p.t_date, p.execution_on, COALESCE(p.cash_debited, p.cost) AS cash_debited,
               COALESCE(p.fee_amount, 0) AS fee_amount, p.cost AS subscription_amount,
               p.status, p.auto_generated, p.cutoff_period
        FROM positions p
        JOIN dca_plans d ON d.id = p.dca_plan_id AND d.exposure = 'nasdaq'
        WHERE p.status IN ('pending', 'settled', 'failed', 'cancelled')
-       ORDER BY COALESCE(p.execution_on, p.recorded_on) DESC, p.id DESC`,
-    )
-    .all()
-    .map((row) => {
+       ORDER BY COALESCE(p.execution_on, p.recorded_on) DESC, p.id DESC`;
+
+export function listDcaExecutionHistory(): DcaFeeDetail[] {
+  return mapDcaHistory(getDb().prepare(DCA_HISTORY_SQL).all());
+}
+
+export function mapDcaHistory(rows: unknown[]): DcaFeeDetail[] {
+  return rows.map((row) => {
       const value = row as {
         position_id: number;
         dca_plan_id: number;

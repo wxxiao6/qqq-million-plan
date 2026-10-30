@@ -46,3 +46,5 @@ next-env.d.ts
 # Cloudflare local builds and state
 /.open-next/
 /.wrangler/
+
+/data/cloud-jobs/

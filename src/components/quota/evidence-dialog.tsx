@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { noticePreviewUrl } from "@/lib/fund-notice-source";
-import Image from "next/image";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -16,42 +15,9 @@ type EvidenceDialogProps = {
   sellers?: Array<{ name: string; sourceUrl: string | null }>;
 };
 
-function NoticePage({ url, pageNumber, totalPages }: { url: string; pageNumber: number; totalPages: number }) {
-  const [failed, setFailed] = useState(false);
-  return <section>
-    <p className="mb-2 text-xs text-muted-foreground">第 {pageNumber} / {totalPages} 页</p>
-    {failed ? <p className="rounded-md border border-border bg-background p-4 text-sm text-muted-foreground">本页暂时无法显示，可下载 PDF 原文查看。</p>
-      : <Image src={`${url}&format=page&page=${pageNumber}`} alt={`公告第 ${pageNumber} 页`}
-        width={1072} height={1516} unoptimized onError={() => setFailed(true)}
-        className="h-auto w-full rounded-sm bg-white shadow-sm" />}
-  </section>;
-}
-
 function NoticePages({ url }: { url: string }) {
-  const [totalPages, setTotalPages] = useState<number | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch(`${url}&format=meta`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("公告获取失败");
-        return response.json() as Promise<{ totalPages: number }>;
-      })
-      .then((result) => {
-        if (!Number.isInteger(result.totalPages) || result.totalPages < 1 || result.totalPages > 100) throw new Error("公告页数无效");
-        setTotalPages(result.totalPages);
-      })
-      .catch(() => { if (!controller.signal.aborted) setError(true); });
-    return () => controller.abort();
-  }, [url]);
-
-  if (error) return <p className="text-sm text-muted-foreground">公告内容暂时无法读取，请稍后重试。</p>;
-  if (!totalPages) return <p className="text-sm text-muted-foreground">正在读取公告…</p>;
-  return <div className="min-h-0 flex-1 space-y-6 overflow-y-auto rounded-md border border-border bg-muted/20 p-3 sm:p-5">
-    {Array.from({ length: totalPages }, (_, index) =>
-      <NoticePage key={index} url={url} pageNumber={index + 1} totalPages={totalPages} />)}
-  </div>;
+  return <iframe title="基金公告 PDF 预览" src={url}
+    className="min-h-0 w-full flex-1 rounded-md border border-border bg-white" />;
 }
 
 export function EvidenceDialog({ kind, fundName, code, sourceUrl, sellers = [] }: EvidenceDialogProps) {

@@ -13,16 +13,32 @@ import {
   upsertTodaySnapshot,
 } from "./index";
 import { getManagementFeeStartDate, rebuildManagementFeeGroup } from "./management-fees";
+import { deletePositionD1, savePositionD1 } from "./positions-d1";
+import { createPendingSubscriptionD1, resolvePendingSubscriptionD1 } from "./pending-d1";
+import { deleteManagementFeeEntryD1, saveManagementFeeEntryD1 } from "./management-fee-write-d1";
+import { writeAssetD1 } from "./assets-d1";
+import { importNavCsvD1, importPositionsCsvD1 } from "./import-d1";
+import type { ReconcileD1 } from "./reconcile-d1";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 export async function addPendingSubscription(input: PendingInput): Promise<ActionResult> {
+  if (process.env.CLOUDFLARE_RUNTIME === "1") {
+    const result = await createPendingSubscriptionD1(await cloudDatabase(), input);
+    if (result.ok) invalidateViews();
+    return result.ok ? { ok: true } : result;
+  }
   const result = createPendingSubscription(input);
   if (result.ok) touch();
   return result.ok ? { ok: true } : result;
 }
 
 export async function finishPendingSubscription(input: Parameters<typeof resolvePendingSubscription>[0]): Promise<ActionResult> {
+  if (process.env.CLOUDFLARE_RUNTIME === "1") {
+    const result = await resolvePendingSubscriptionD1(await cloudDatabase(), input);
+    if (result.ok) invalidateViews();
+    return result.ok ? { ok: true } : result;
+  }
   const result = resolvePendingSubscription(input);
   if (result.ok) touch();
   return result.ok ? { ok: true } : result;
@@ -34,6 +50,10 @@ const EXPOSURES: Exposure[] = ["nasdaq", "gold", "crypto"];
 
 function touch() {
   upsertTodaySnapshot();
+  invalidateViews();
+}
+
+function invalidateViews() {
   revalidatePath("/");
   revalidatePath("/holdings");
   revalidatePath("/holdings/overview");
@@ -41,6 +61,19 @@ function touch() {
   revalidatePath("/dca");
   revalidatePath("/quota");
   revalidatePath("/assets");
+}
+
+async function cloudDatabase(): Promise<ReconcileD1> {
+  const { getCloudflareContext } = await import("@opennextjs/cloudflare");
+  return (getCloudflareContext().env as unknown as { DB: ReconcileD1 }).DB;
+}
+
+async function cloudAssetWrite(sql: string, values: (string | number | null)[]): Promise<ActionResult> {
+  try {
+    await writeAssetD1(await cloudDatabase(), sql, values);
+    invalidateViews();
+    return { ok: true };
+  } catch { return { ok: false, error: "保存失败，请刷新后重试" }; }
 }
 
 function duplicateNasdaqHoldingMessage(db: ReturnType<typeof getDb>, account: string, symbol: string): string | null {
@@ -62,6 +95,11 @@ export async function savePosition(input: {
   status: PositionStatus;
   note?: string;
 }): Promise<ActionResult> {
+  if (process.env.CLOUDFLARE_RUNTIME === "1") {
+    const result = await savePositionD1(await cloudDatabase(), input);
+    if (result.ok) invalidateViews();
+    return result;
+  }
   if (!ACCOUNTS.includes(input.account)) return { ok: false, error: "账户不合法" };
   const exposure = input.exposure ?? "nasdaq";
   if (!EXPOSURES.includes(exposure)) return { ok: false, error: "敞口不合法" };
@@ -103,6 +141,11 @@ export async function savePosition(input: {
 }
 
 export async function deletePosition(id: number): Promise<ActionResult> {
+  if (process.env.CLOUDFLARE_RUNTIME === "1") {
+    const result = await deletePositionD1(await cloudDatabase(), id);
+    if (result.ok) invalidateViews();
+    return result;
+  }
   const existing = getDb().prepare("SELECT status, dca_plan_id FROM positions WHERE id = ?").get(id) as { status: PositionStatus; dca_plan_id: number | null } | undefined;
   if (!existing) return { ok: false, error: "找不到持仓" };
   if (existing.status === "pending" || existing.dca_plan_id != null) return { ok: false, error: "待确认申购请标记失败或撤单；定投持仓不可直接删除" };
@@ -119,6 +162,11 @@ export async function saveManagementFeeEntry(input: {
   amount: number;
   note?: string;
 }): Promise<ActionResult> {
+  if (process.env.CLOUDFLARE_RUNTIME === "1") {
+    const result = await saveManagementFeeEntryD1(await cloudDatabase(), input);
+    if (result.ok) invalidateViews();
+    return result;
+  }
   if (!ACCOUNTS.includes(input.account)) return { ok: false, error: "账户不合法" };
   const symbol = input.symbol.trim();
   if (!symbol) return { ok: false, error: "基金代码不能为空" };
@@ -140,6 +188,11 @@ export async function saveManagementFeeEntry(input: {
 }
 
 export async function deleteManagementFeeEntry(id: number): Promise<ActionResult> {
+  if (process.env.CLOUDFLARE_RUNTIME === "1") {
+    const result = await deleteManagementFeeEntryD1(await cloudDatabase(), id);
+    if (result.ok) invalidateViews();
+    return result;
+  }
   if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "管理费记录不合法" };
   const existing = getDb().prepare("SELECT symbol, account FROM holding_management_fee_entries WHERE id = ?").get(id) as { symbol: string; account: Account } | undefined;
   if (!existing) return { ok: false, error: "找不到管理费记录" };
@@ -161,6 +214,9 @@ export async function saveNav(input: {
   if (!Number.isFinite(input.nav) || input.nav <= 0) {
     return { ok: false, error: "净值必须大于 0" };
   }
+  if (process.env.CLOUDFLARE_RUNTIME === "1") return cloudAssetWrite(
+    `INSERT INTO nav_snapshots (symbol, as_of, nav, source) VALUES (?, ?, ?, 'manual')
+     ON CONFLICT(symbol, as_of) DO UPDATE SET nav = excluded.nav, source = 'manual'`, [symbol, input.asOf, input.nav]);
   getDb()
     .prepare(
       `INSERT INTO nav_snapshots (symbol, as_of, nav, source) VALUES (?, ?, ?, 'manual')
@@ -179,6 +235,9 @@ export async function savePortfolioSnapshot(input: {
   if (!Number.isFinite(input.dynamicMv) || input.dynamicMv < 0) {
     return { ok: false, error: "动态市值不能为负数" };
   }
+  if (process.env.CLOUDFLARE_RUNTIME === "1") return cloudAssetWrite(
+    `INSERT INTO portfolio_snapshots (as_of, dynamic_mv) VALUES (?, ?)
+     ON CONFLICT(as_of) DO UPDATE SET dynamic_mv = excluded.dynamic_mv`, [input.asOf, input.dynamicMv]);
   getDb()
     .prepare(
       `INSERT INTO portfolio_snapshots (as_of, dynamic_mv) VALUES (?, ?)
@@ -198,6 +257,11 @@ function parseCsv(text: string): string[][] {
 }
 
 export async function importPositionsCsv(csv: string): Promise<ActionResult> {
+  if (process.env.CLOUDFLARE_RUNTIME === "1") {
+    const result = await importPositionsCsvD1(await cloudDatabase(), csv);
+    if (result.ok) invalidateViews();
+    return result;
+  }
   const rows = parseCsv(csv);
   if (rows.length === 0) return { ok: false, error: "CSV 为空" };
   const start = /account|账户/i.test(rows[0][0] ?? "") ? 1 : 0;
@@ -236,6 +300,11 @@ export async function importPositionsCsv(csv: string): Promise<ActionResult> {
 }
 
 export async function importNavCsv(csv: string): Promise<ActionResult> {
+  if (process.env.CLOUDFLARE_RUNTIME === "1") {
+    const result = await importNavCsvD1(await cloudDatabase(), csv);
+    if (result.ok) invalidateViews();
+    return result;
+  }
   const rows = parseCsv(csv);
   if (rows.length === 0) return { ok: false, error: "CSV 为空" };
   const start = /symbol|代码/i.test(rows[0][0] ?? "") ? 1 : 0;
@@ -281,6 +350,12 @@ export async function saveDeposit(input: {
     if (date && !isISODate(date)) return { ok: false, error: "日期格式须为 YYYY-MM-DD" };
   }
   const rate = input.rate == null || Number.isNaN(input.rate) ? null : input.rate;
+  if (process.env.CLOUDFLARE_RUNTIME === "1") {
+    const values = [bank, input.principal, rate, input.startDate || null, input.maturityDate || null, input.canPrepay ? 1 : 0];
+    return input.id
+      ? cloudAssetWrite("UPDATE deposits SET bank=?,principal=?,rate=?,start_date=?,maturity_date=?,can_prepay=? WHERE id=?", [...values, input.id])
+      : cloudAssetWrite("INSERT INTO deposits (bank,principal,rate,start_date,maturity_date,can_prepay) VALUES (?,?,?,?,?,?)", values);
+  }
   if (input.id) {
     getDb()
       .prepare(
@@ -316,6 +391,7 @@ export async function saveDeposit(input: {
 }
 
 export async function deleteDeposit(id: number): Promise<ActionResult> {
+  if (process.env.CLOUDFLARE_RUNTIME === "1") return cloudAssetWrite("DELETE FROM deposits WHERE id=?", [id]);
   getDb().prepare("DELETE FROM deposits WHERE id = ?").run(id);
   touch();
   return { ok: true };
@@ -335,6 +411,10 @@ export async function saveMortgage(input: {
   if (paymentDay != null && (paymentDay < 1 || paymentDay > 28)) {
     return { ok: false, error: "还款日须为 1–28" };
   }
+  if (process.env.CLOUDFLARE_RUNTIME === "1") return cloudAssetWrite(`INSERT INTO mortgage (id,remaining_principal,monthly_payment,remaining_terms,rate_type,payment_day)
+    VALUES (1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET remaining_principal=excluded.remaining_principal,monthly_payment=excluded.monthly_payment,
+    remaining_terms=excluded.remaining_terms,rate_type=excluded.rate_type,payment_day=excluded.payment_day`,
+  [input.remainingPrincipal, input.monthlyPayment ?? null, input.remainingTerms ?? null, input.rateType || null, paymentDay]);
   getDb()
     .prepare(
       `INSERT INTO mortgage (id, remaining_principal, monthly_payment, remaining_terms, rate_type, payment_day)
@@ -359,6 +439,7 @@ export async function saveMortgage(input: {
 
 export async function saveCash(amount: number): Promise<ActionResult> {
   if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: "现金不能为负数" };
+  if (process.env.CLOUDFLARE_RUNTIME === "1") return cloudAssetWrite("INSERT INTO cash_balance (id,amount) VALUES (1,?) ON CONFLICT(id) DO UPDATE SET amount=excluded.amount", [amount]);
   getDb()
     .prepare(
       `INSERT INTO cash_balance (id, amount) VALUES (1, ?)

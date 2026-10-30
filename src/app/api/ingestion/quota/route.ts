@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/server/db";
 import { authorizeQuotaToken, ingestQuotaPayload, QuotaIngestionError } from "@/server/funds/quota-ingestion";
+import { ingestQuotaPayloadD1, type QuotaD1 } from "@/server/funds/quota-ingestion-d1";
 
 export const runtime = "nodejs";
 
@@ -13,7 +14,13 @@ export async function POST(request: Request) {
   let body: unknown;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "invalid_json" }, { status: 400 }); }
   try {
-    const result = ingestQuotaPayload(getDb(), body, key);
+    const result = process.env.CLOUDFLARE_RUNTIME === "1"
+      ? await (async () => {
+        const { getCloudflareContext } = await import("@opennextjs/cloudflare");
+        const { env } = getCloudflareContext();
+        return ingestQuotaPayloadD1((env as unknown as { DB: QuotaD1 }).DB, body, key);
+      })()
+      : ingestQuotaPayload(getDb(), body, key);
     return NextResponse.json({ ok: true, ...result }, { status: result.reused ? 200 : 201 });
   } catch (error) {
     if (error instanceof QuotaIngestionError) return NextResponse.json({ error: error.code, message: error.message, details: error.details }, { status: error.code === "idempotency_conflict" ? 409 : 422 });

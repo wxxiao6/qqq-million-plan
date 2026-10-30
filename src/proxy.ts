@@ -31,16 +31,21 @@ export async function proxy(request: NextRequest) {
   // This endpoint authenticates its existing, independent ingestion token itself.
   if (request.nextUrl.pathname === "/api/ingestion/quota" && request.method === "POST") return NextResponse.next();
 
-  const expected = process.env.SITE_ACCESS_TOKEN;
-  if (!expected || !/^[A-Za-z0-9_-]{43,}$/.test(expected)) {
-    return new NextResponse("Site authentication is not configured", { status: 503, headers: { "Cache-Control": "no-store" } });
-  }
-  const supplied = basicPassword(request.headers.get("authorization"));
-  if (!supplied || !(await constantTimeEqual(supplied, expected))) {
-    return new NextResponse("Authentication required", {
-      status: 401,
-      headers: { "WWW-Authenticate": AUTH_CHALLENGE, "Cache-Control": "no-store" },
-    });
+  // Machine job endpoints validate their own credential and never accept it for the website.
+  if (["/api/jobs/refresh", "/api/jobs/reconcile", "/api/jobs/info"].includes(request.nextUrl.pathname) && request.method === "POST") return NextResponse.next();
+
+  if (process.env.SITE_AUTH_REQUIRED !== "0") {
+    const expected = process.env.SITE_ACCESS_TOKEN;
+    if (!expected || !/^[A-Za-z0-9_-]{43,}$/.test(expected)) {
+      return new NextResponse("Site authentication is not configured", { status: 503, headers: { "Cache-Control": "no-store" } });
+    }
+    const supplied = basicPassword(request.headers.get("authorization"));
+    if (!supplied || !(await constantTimeEqual(supplied, expected))) {
+      return new NextResponse("Authentication required", {
+        status: 401,
+        headers: { "WWW-Authenticate": AUTH_CHALLENGE, "Cache-Control": "no-store" },
+      });
+    }
   }
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
     const origin = request.headers.get("origin");
