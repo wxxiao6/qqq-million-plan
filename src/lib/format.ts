@@ -15,16 +15,6 @@ export function todayISO(): string {
   return `${y}-${m}-${d}`;
 }
 
-/** 北京时间 HH:mm，用于 07:00 / 22:00 产品时刻。 */
-export function beijingHourMinute(now = new Date()): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: BEIJING_TZ,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(now);
-}
-
 /** 额度统计周期：北京时间自然日。 */
 export function beijingTodayISO(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {

@@ -43,8 +43,3 @@ export function readNetInflow(bizDate: string): number | null {
   if (!Number.isFinite(n) || n <= 0) return null;
   return n;
 }
-
-export function jobSucceededOn(name: JobName, bizDate: string): boolean {
-  const last = readJob(name);
-  return Boolean(last?.ok && last.bizDate === bizDate);
-}
