@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { TIANTIAN_NOTICE_ID, tiantianNoticePdfUrl } from "@/lib/fund-notice-source";
-import { getDocumentProxy, renderPageAsImage } from "unpdf";
+import { getDocumentProxy } from "unpdf";
 
 const PDF_ENDPOINT = "http://eid.csrc.gov.cn/fund/disclose/instance_show_pdf_id.do";
 
@@ -32,21 +32,7 @@ export async function GET(request: NextRequest) {
       });
     }
     if (format === "page") {
-      const pageNumber = Number(request.nextUrl.searchParams.get("page"));
-      if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 100) {
-        return new Response("无效页码", { status: 400 });
-      }
-      const png = await renderPageAsImage(new Uint8Array(bytes), pageNumber, {
-        scale: 1.8,
-        canvasImport: () => import("@napi-rs/canvas"),
-      });
-      return new Response(png, {
-        headers: {
-          "Content-Type": "image/png",
-          "Cache-Control": "public, max-age=86400",
-          "X-Content-Type-Options": "nosniff",
-        },
-      });
+      return new Response("请使用 PDF 原文预览公告", { status: 410 });
     }
     return new Response(bytes, {
       headers: {
