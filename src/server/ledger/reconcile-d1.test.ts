@@ -41,6 +41,11 @@ describe("D1 automatic DCA reconciliation", () => {
     const positionSql = "SELECT account,symbol,shares,cost,status,note,recorded_on,execution_on,dca_plan_id,cash_debited,fee_amount,cutoff_period,order_origin,auto_generated,t_date,t_nav,confirmed_on FROM positions ORDER BY id";
     const planSql = "SELECT invested_total,imported_through,next_debit_date FROM dca_plans WHERE id=?";
     expect(target.prepare(positionSql).all()).toEqual(source.prepare(positionSql).all());
+    expect(target.prepare("SELECT execution_on,status FROM positions WHERE dca_plan_id=? ORDER BY execution_on").all(saved.id)).toEqual([
+      { execution_on: "2026-10-08", status: "settled" },
+      { execution_on: "2026-10-09", status: "pending" },
+      { execution_on: "2026-10-12", status: "pending" },
+    ]);
     expect(target.prepare(planSql).get(saved.id)).toEqual(source.prepare(planSql).get(saved.id));
     await reconcileDueDcaPlanD1(d1, saved.id, "2026-10-12");
     expect(target.prepare(positionSql).all()).toEqual(source.prepare(positionSql).all());

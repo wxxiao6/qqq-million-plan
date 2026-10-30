@@ -136,7 +136,7 @@ export function autoEstimateStatement(db: ReconcileD1, symbol: string, today: st
     ), resolved AS MATERIALIZED (
       SELECT chosen.*, COALESCE((SELECT nav FROM history WHERE as_of=selected_date),
         CASE WHEN selected_date=t_date THEN t_nav END) AS selected_nav,
-        (SELECT COUNT(*) FROM history)=3 AND selected_date<(SELECT MIN(as_of) FROM history) AS aged
+        (SELECT COUNT(*) FROM history)=3 AND selected_date<=(SELECT MIN(as_of) FROM history) AS aged
       FROM chosen
     )
     UPDATE positions SET shares=ROUND(resolved.cost/resolved.selected_nav,2), t_nav=resolved.selected_nav,

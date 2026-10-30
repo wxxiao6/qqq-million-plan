@@ -61,7 +61,7 @@ function recentHistory(symbol: string, today: string): Nav[] {
     WHERE symbol=? AND as_of<=? AND nav>0 ORDER BY as_of DESC LIMIT 3`).all(symbol, today) as Nav[];
 }
 
-/** 净值只确定预计份额；按约定移出三个净值日窗口后，同一笔记录结转。 */
+/** 净值只确定预计份额；申购净值后有两个净值日时，同一笔记录结转。 */
 export function updateAutoPendingEstimates(symbol: string, today = beijingTodayISO()) {
   const db = getDb();
   const history = recentHistory(symbol, today);
@@ -75,7 +75,7 @@ export function updateAutoPendingEstimates(symbol: string, today = beijingTodayI
       row.cutoff_period === 'after_15' ? item.asOf > row.execution_on : item.asOf >= row.execution_on);
     if (!nav || !Number.isFinite(nav.nav) || nav.nav <= 0) continue;
     const shares = Math.round((row.cost / nav.nav + Number.EPSILON) * 100) / 100;
-    const aged = history.length === 3 && nav.asOf < history[2].asOf;
+    const aged = history.length === 3 && nav.asOf <= history[2].asOf;
     db.prepare(`UPDATE positions SET shares=?, t_nav=?, t_date=?, status=?,
       recorded_on=CASE WHEN ? THEN ? ELSE recorded_on END,
       confirmed_on=CASE WHEN ? THEN ? ELSE confirmed_on END, updated_at=? WHERE id=?`)
