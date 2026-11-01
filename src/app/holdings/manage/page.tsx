@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/server/auth/context";
 import { PositionForm } from "@/components/holdings/holdings-forms";
 import { PendingSubscriptionForm } from "@/components/holdings/pending-forms";
 import { HoldingsExplorer } from "@/components/holdings/holdings-explorer";
@@ -16,6 +18,7 @@ function readLocalHoldings() {
 }
 
 export default async function HoldingsManagePage() {
+  if (!await getCurrentUser()) redirect("/login");
   const data = process.env.CLOUDFLARE_RUNTIME === "1"
     ? await (async () => {
       const { getCloudflareContext } = await import("@opennextjs/cloudflare");

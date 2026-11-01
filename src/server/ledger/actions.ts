@@ -1,12 +1,12 @@
 "use server";
 
+import { requireUser } from "@/server/auth/context";
 import { revalidatePath } from "next/cache";
 import { resolveHoldingNumbers } from "@/lib/holding-input";
 import { isISODate, todayISO } from "@/lib/format";
 import { getDb } from "../db";
 import { createPendingSubscription, resolvePendingSubscription, type PendingInput } from "./pending";
 import {
-  listPositions,
   type Account,
   type Exposure,
   type PositionStatus,
@@ -21,6 +21,7 @@ import type { ReconcileD1 } from "./reconcile-d1";
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 export async function addPendingSubscription(input: PendingInput): Promise<ActionResult> {
+  await requireUser();
   if (process.env.CLOUDFLARE_RUNTIME === "1") {
     const result = await createPendingSubscriptionD1(await cloudDatabase(), input);
     if (result.ok) invalidateViews();
@@ -32,6 +33,7 @@ export async function addPendingSubscription(input: PendingInput): Promise<Actio
 }
 
 export async function finishPendingSubscription(input: Parameters<typeof resolvePendingSubscription>[0]): Promise<ActionResult> {
+  await requireUser();
   if (process.env.CLOUDFLARE_RUNTIME === "1") {
     const result = await resolvePendingSubscriptionD1(await cloudDatabase(), input);
     if (result.ok) invalidateViews();
@@ -92,6 +94,7 @@ export async function savePosition(input: {
   status: PositionStatus;
   note?: string;
 }): Promise<ActionResult> {
+  await requireUser();
   if (process.env.CLOUDFLARE_RUNTIME === "1") {
     const result = await savePositionD1(await cloudDatabase(), input);
     if (result.ok) invalidateViews();
@@ -138,6 +141,7 @@ export async function savePosition(input: {
 }
 
 export async function deletePosition(id: number): Promise<ActionResult> {
+  await requireUser();
   if (process.env.CLOUDFLARE_RUNTIME === "1") {
     const result = await deletePositionD1(await cloudDatabase(), id);
     if (result.ok) invalidateViews();
@@ -156,6 +160,7 @@ export async function saveNav(input: {
   asOf: string;
   nav: number;
 }): Promise<ActionResult> {
+  await requireUser();
   const symbol = input.symbol.trim();
   if (!symbol) return { ok: false, error: "基金代码不能为空" };
   if (!isISODate(input.asOf)) return { ok: false, error: "日期格式须为 YYYY-MM-DD" };
@@ -179,6 +184,7 @@ export async function savePortfolioSnapshot(input: {
   asOf: string;
   dynamicMv: number;
 }): Promise<ActionResult> {
+  await requireUser();
   if (!isISODate(input.asOf)) return { ok: false, error: "日期格式须为 YYYY-MM-DD" };
   if (!Number.isFinite(input.dynamicMv) || input.dynamicMv < 0) {
     return { ok: false, error: "动态市值不能为负数" };
@@ -205,6 +211,7 @@ function parseCsv(text: string): string[][] {
 }
 
 export async function importPositionsCsv(csv: string): Promise<ActionResult> {
+  await requireUser();
   if (process.env.CLOUDFLARE_RUNTIME === "1") {
     const result = await importPositionsCsvD1(await cloudDatabase(), csv);
     if (result.ok) invalidateViews();
@@ -248,6 +255,7 @@ export async function importPositionsCsv(csv: string): Promise<ActionResult> {
 }
 
 export async function importNavCsv(csv: string): Promise<ActionResult> {
+  await requireUser();
   if (process.env.CLOUDFLARE_RUNTIME === "1") {
     const result = await importNavCsvD1(await cloudDatabase(), csv);
     if (result.ok) invalidateViews();

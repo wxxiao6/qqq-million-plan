@@ -1,5 +1,6 @@
 "use server";
 
+import { requireUser } from "@/server/auth/context";
 import { revalidatePath } from "next/cache";
 import { GOLD_SYMBOL, isAssetType, type AssetType } from "@/lib/holdings";
 import type { Account } from "@/server/ledger";
@@ -11,6 +12,7 @@ import { lookupNasdaqFundSync } from "./lookup";
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 export async function enableAssetType(type: string): Promise<ActionResult> {
+  await requireUser();
   if (!isAssetType(type)) return { ok: false, error: "类型不合法" };
   enableAssetTypeSync(type as AssetType);
   revalidatePath("/holdings");
@@ -19,6 +21,7 @@ export async function enableAssetType(type: string): Promise<ActionResult> {
 }
 
 export async function lookupNasdaqFund(symbol: string) {
+  await requireUser();
   const found = lookupNasdaqFundSync(symbol);
   if (!found) return { ok: false as const, error: "找不到这只" };
   return { ok: true as const, fund: found };
@@ -27,7 +30,8 @@ export async function lookupNasdaqFund(symbol: string) {
 function accountForChannel(
   channelKind: "direct" | "agency",
   platform: string,
-): { ok: true; account: Account } | { ok: false; error: string } {
+): {
+  ok: true; account: Account } | { ok: false; error: string } {
   if (channelKind === "direct") {
     return { ok: true, account: "gf_direct" };
   }
@@ -44,6 +48,7 @@ export async function saveNasdaqHolding(input: {
   shares: number;
   unitCost: number;
 }): Promise<ActionResult> {
+  await requireUser();
   const found = lookupNasdaqFundSync(input.symbol);
   if (!found) return { ok: false, error: "找不到这只" };
   if (input.channelKind !== "direct" && input.channelKind !== "agency") {
@@ -89,6 +94,7 @@ export async function saveLotHolding(input: {
   shares: number;
   cost: number;
 }): Promise<ActionResult> {
+  await requireUser();
   const symbol =
     input.exposure === "gold" ? GOLD_SYMBOL : String(input.symbol ?? "").trim();
   if (input.exposure === "crypto" && !symbol) {

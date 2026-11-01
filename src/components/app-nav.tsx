@@ -11,7 +11,7 @@ const ITEMS = [
   { href: "/quota", label: "纳指雷达", icon: Unlock },
 ] as const;
 
-export function AppNav() {
+export function AppNav({ authenticated }: { authenticated: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -44,6 +44,9 @@ export function AppNav() {
             );
           })}
         </nav>
+        {!authenticated && pathname !== "/login" && (
+          <Link href="/login" className="text-sm text-muted-foreground no-underline hover:text-foreground">登录</Link>
+        )}
       </div>
     </header>
   );

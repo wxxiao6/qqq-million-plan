@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans, Newsreader } from "next/font/google";
 import { AppNav } from "@/components/app-nav";
+import { getCurrentUser } from "@/server/auth/context";
 import { UiProviders } from "@/components/ui-providers";
 import "./globals.css";
 
@@ -30,9 +31,10 @@ export const metadata: Metadata = {
   description: "个人财务工作台：资产、持仓、纳指额度与市场关注度。",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
+  const user = await getCurrentUser();
   return (
     <html
       lang="zh-CN"
@@ -41,7 +43,7 @@ export default function RootLayout({
     >
       <body className="min-h-full bg-background text-foreground" suppressHydrationWarning>
         <UiProviders>
-          <AppNav />
+          <AppNav authenticated={Boolean(user)} />
           <main className="app-main mx-auto w-full max-w-7xl px-5 py-9 sm:px-8 lg:px-10 lg:py-14">
             {children}
           </main>
