@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PositionDetail } from "@/server/ledger";
-import { filterHoldingPositions, fundIncomeDate, groupHoldingChannels, groupNasdaqHoldings, isQdiiFund, marketValueIncludingPending, summarizeNasdaqHoldings } from "./holdings-dashboard";
+import { filterHoldingPositions, fundIncomeDate, groupHoldingChannels, groupNasdaqHoldings, isQdiiFund, marketValueIncludingPending, sortHoldingGroups, summarizeNasdaqHoldings } from "./holdings-dashboard";
 
 function row(input: Partial<PositionDetail> & Pick<PositionDetail, "id" | "symbol" | "status">): PositionDetail {
   return {
@@ -132,5 +132,38 @@ describe("持仓筛选与总览", () => {
     expect(filterHoldingPositions(positions, names, "016452", "jd")).toEqual(byName);
     const empty = summarizeNasdaqHoldings(groupNasdaqHoldings(filterHoldingPositions(positions, names, "不存在", "jd"), names));
     expect(empty).toMatchObject({ fundCount: 0, settledCount: 0, cost: 0, marketValue: null, holdingPnl: null, pendingCash: 0 });
+  });
+});
+
+describe("持仓排序", () => {
+  const groups = groupNasdaqHoldings([
+    row({ id: 1, symbol: "001", status: "settled", cost: 1000, marketValue: 1100, holdingPnl: 100, today: -10, navAsOf: "2026-10-30" }),
+    row({ id: 2, symbol: "002", status: "settled", cost: 100, marketValue: 130, holdingPnl: 30, today: 5, navAsOf: "2026-11-02" }),
+    row({ id: 3, symbol: "002", status: "pending", shares: null, marketValue: null, holdingPnl: null, today: null, cashDebited: 2000 }),
+    row({ id: 4, symbol: "003", status: "settled", cost: 100, marketValue: 80, holdingPnl: -20, today: -2, navAsOf: "2026-10-29" }),
+    row({ id: 5, symbol: "004", status: "settled", nav: null, navAsOf: null, marketValue: null, holdingPnl: null, today: null }),
+  ], {});
+
+  it("持有收益与收益率分别排序，收益率不受待确认资金影响", () => {
+    expect(sortHoldingGroups(groups, "gain").map((group) => group.symbol)).toEqual(["001", "002", "003", "004"]);
+    expect(sortHoldingGroups(groups, "gainRate").map((group) => group.symbol)).toEqual(["002", "001", "003", "004"]);
+  });
+
+  it("金额含待确认资金，单日收益与净值更新时间独立排序", () => {
+    expect(sortHoldingGroups(groups, "value").map((group) => group.symbol)).toEqual(["002", "001", "003", "004"]);
+    expect(sortHoldingGroups(groups, "dayGain").map((group) => group.symbol)).toEqual(["002", "003", "001", "004"]);
+    expect(sortHoldingGroups(groups, "navDate").map((group) => group.symbol)).toEqual(["002", "001", "003", "004"]);
+    expect(groups.map((group) => group.symbol)).toEqual(["001", "002", "003", "004"]);
+  });
+
+  it("成本为零或估值不完整时不计算收益率，相同值按代码稳定排序", () => {
+    const incomplete = groupNasdaqHoldings([
+      row({ id: 1, symbol: "003", status: "settled", cost: 0, holdingPnl: 100 }),
+      row({ id: 2, symbol: "002", status: "settled", cost: 100, holdingPnl: 10 }),
+      row({ id: 3, symbol: "002", status: "settled", cost: 100, marketValue: null, holdingPnl: null, today: null, navAsOf: null }),
+      row({ id: 4, symbol: "001", status: "settled", cost: 100, holdingPnl: -10 }),
+    ], {});
+    expect(sortHoldingGroups(incomplete, "gainRate").map((group) => group.symbol)).toEqual(["001", "002", "003"]);
+    expect(sortHoldingGroups(incomplete, "dayGain").map((group) => group.symbol)).toEqual(["001", "002", "003"]);
   });
 });

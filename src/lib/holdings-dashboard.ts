@@ -37,6 +37,30 @@ export type HoldingGroup = {
   navAsOf: string | null;
 };
 
+export type HoldingSortOrder = "gain" | "gainRate" | "value" | "dayGain" | "navDate";
+
+function holdingSortValue(group: HoldingGroup, sort: Exclude<HoldingSortOrder, "navDate">): number | null {
+  switch (sort) {
+    case "gain": return group.holdingPnl;
+    case "gainRate": return group.cost > 0 && group.holdingPnl != null && group.unvaluedCount === 0
+      ? group.holdingPnl / group.cost : null;
+    case "value": return marketValueIncludingPending(group.marketValue, group.pendingCash);
+    case "dayGain": return group.today;
+  }
+}
+
+/** Match the amounts displayed on the cards; missing values follow all known values. */
+export function sortHoldingGroups(groups: HoldingGroup[], sort: HoldingSortOrder): HoldingGroup[] {
+  return [...groups].sort((a, b) => {
+    if (sort === "navDate") return (b.navAsOf ?? "").localeCompare(a.navAsOf ?? "") || a.symbol.localeCompare(b.symbol);
+    const aValue = holdingSortValue(a, sort);
+    const bValue = holdingSortValue(b, sort);
+    if (aValue == null && bValue != null) return 1;
+    if (bValue == null && aValue != null) return -1;
+    return (bValue ?? 0) - (aValue ?? 0) || a.symbol.localeCompare(b.symbol);
+  });
+}
+
 export type HoldingChannelGroup = {
   account: PositionDetail["account"];
   positions: PositionDetail[];

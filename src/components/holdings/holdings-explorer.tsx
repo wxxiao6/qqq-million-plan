@@ -9,11 +9,9 @@ import { accountLabel } from "@/components/labels";
 import { SalesChannelFilters } from "@/components/sales-channel-filter";
 import { FilterSelect } from "@/components/filter-select";
 import { Money, Qty } from "@/components/money";
-import { filterHoldingPositions, fundIncomeDate, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, summarizeNasdaqHoldings, type HoldingChannelGroup, type HoldingGroup } from "@/lib/holdings-dashboard";
+import { filterHoldingPositions, fundIncomeDate, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, sortHoldingGroups, summarizeNasdaqHoldings, type HoldingChannelGroup, type HoldingGroup, type HoldingSortOrder } from "@/lib/holdings-dashboard";
 import type { PositionDetail } from "@/server/ledger";
 import { filterBySalesChannel, type SalesChannelFilter } from "@/lib/sales-channel-filter";
-
-type SortOrder = "value" | "gain" | "navDate" | "symbol";
 
 function incomeLabel(incomeDate: string | null): string {
   return incomeDate ? `${incomeDate} 收益` : "单日收益";
@@ -24,16 +22,11 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncEr
   const [query, setQuery] = useState("");
   const [channel, setChannel] = useState<SalesChannelFilter>("all");
   const [detail, setDetail] = useState("all");
-  const [sort, setSort] = useState<SortOrder>("value");
+  const [sort, setSort] = useState<HoldingSortOrder>("value");
 
   const groups = useMemo(() => {
     const matching = filterBySalesChannel(filterHoldingPositions(positions.filter((position) => scope === "all" || position.exposure === scope), names, query, "all"), managers, channel, detail);
-    const result = groupNasdaqHoldings(matching, names, qdiiFunds);
-    result.sort((a, b) => sort === "symbol" ? a.symbol.localeCompare(b.symbol) :
-      sort === "navDate" ? (b.navAsOf ?? "").localeCompare(a.navAsOf ?? "") || a.symbol.localeCompare(b.symbol) :
-      sort === "gain" ? (b.holdingPnl ?? Number.NEGATIVE_INFINITY) - (a.holdingPnl ?? Number.NEGATIVE_INFINITY) || a.symbol.localeCompare(b.symbol) :
-        (b.marketValue ?? Number.NEGATIVE_INFINITY) - (a.marketValue ?? Number.NEGATIVE_INFINITY) || a.symbol.localeCompare(b.symbol));
-    return result;
+    return sortHoldingGroups(groupNasdaqHoldings(matching, names, qdiiFunds), sort);
   }, [positions, names, managers, qdiiFunds, query, channel, detail, sort, scope]);
 
   const summary = useMemo(() => summarizeNasdaqHoldings(groups), [groups]);
@@ -89,8 +82,8 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncEr
       <FilterSelect label="范围" ariaLabel="持仓范围" value={scope} onValueChange={setScope} className="order-1"
         options={[{ value: "all", label: "全部基金" }, { value: "nasdaq", label: "纳指基金" }, { value: "fund", label: "其他基金" }]} />
       <SalesChannelFilters layout="toolbar" rows={positions} managers={managers} channel={channel} detail={detail} onChannelChange={(value) => { setChannel(value); setDetail("all"); }} onDetailChange={setDetail} />
-      <FilterSelect<SortOrder> label="排序" value={sort} onValueChange={setSort} className="order-3 col-span-2 min-[480px]:col-span-1"
-        options={[{ value: "value", label: "市值从高到低" }, { value: "gain", label: "收益从高到低" }, { value: "navDate", label: "净值更新从新到旧" }, { value: "symbol", label: "基金代码" }]} />
+      <FilterSelect<HoldingSortOrder> label="排序" value={sort} onValueChange={setSort} className="order-3 col-span-2 min-[480px]:col-span-1"
+        options={[{ value: "gain", label: "持有收益排序" }, { value: "gainRate", label: "持有收益率排序" }, { value: "value", label: "金额排序" }, { value: "dayGain", label: "昨日收益排序" }, { value: "navDate", label: "更新时间排序" }]} />
       </div>
     </div>
 
