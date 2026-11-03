@@ -75,7 +75,7 @@ export function attachFundNavStatement(db: ReconcileD1, code: string) {
       nav_change_pct=excluded.nav_change_pct,source_url=excluded.source_url WHERE nav_snapshots.source<>'manual'`).bind(code, code);
 }
 
-export const HOLDING_FUNDS_SQL = `SELECT f.code,f.name,f.manager,f.is_nasdaq AS isNasdaq,s.error AS syncError FROM funds f
+export const HOLDING_FUNDS_SQL = `SELECT f.code,f.name,f.manager,f.fund_type AS fundType,f.is_nasdaq AS isNasdaq,s.error AS syncError FROM funds f
   LEFT JOIN fund_nav_sync s ON s.code=f.code
   WHERE f.currency='CNY' AND (f.venue='otc' OR EXISTS(SELECT 1 FROM positions p WHERE p.symbol=f.code)) AND (EXISTS(SELECT 1 FROM nasdaq_funds r WHERE r.code=f.code)
     OR EXISTS(SELECT 1 FROM positions p WHERE p.symbol=f.code AND p.exposure IN ('nasdaq','fund'))) ORDER BY f.code`;

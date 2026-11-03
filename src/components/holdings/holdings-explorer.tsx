@@ -9,19 +9,17 @@ import { accountLabel } from "@/components/labels";
 import { SalesChannelFilters } from "@/components/sales-channel-filter";
 import { FilterSelect } from "@/components/filter-select";
 import { Money, Qty } from "@/components/money";
-import { advanceWeekdays } from "@/lib/format";
-import { filterHoldingPositions, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, summarizeNasdaqHoldings, type HoldingChannelGroup, type HoldingGroup } from "@/lib/holdings-dashboard";
+import { filterHoldingPositions, fundIncomeDate, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, summarizeNasdaqHoldings, type HoldingChannelGroup, type HoldingGroup } from "@/lib/holdings-dashboard";
 import type { PositionDetail } from "@/server/ledger";
 import { filterBySalesChannel, type SalesChannelFilter } from "@/lib/sales-channel-filter";
 
 type SortOrder = "value" | "gain" | "navDate" | "symbol";
 
-// 展示口径：收益日期按净值日顺延一个工作日，计算仍使用原净值日期。
-function incomeLabel(navDate: string | null): string {
-  return navDate ? `${advanceWeekdays(navDate, 1)} 收益` : "单日收益";
+function incomeLabel(incomeDate: string | null): string {
+  return incomeDate ? `${incomeDate} 收益` : "单日收益";
 }
 
-export function HoldingsExplorer({ positions, names, managers, syncErrors = {} }: { positions: PositionDetail[]; names: Record<string, string>; managers: Record<string, string>; syncErrors?: Record<string, string> }) {
+export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncErrors = {} }: { positions: PositionDetail[]; names: Record<string, string>; managers: Record<string, string>; qdiiFunds: Record<string, boolean>; syncErrors?: Record<string, string> }) {
   const [scope, setScope] = useState("all");
   const [query, setQuery] = useState("");
   const [channel, setChannel] = useState<SalesChannelFilter>("all");
@@ -30,13 +28,13 @@ export function HoldingsExplorer({ positions, names, managers, syncErrors = {} }
 
   const groups = useMemo(() => {
     const matching = filterBySalesChannel(filterHoldingPositions(positions.filter((position) => scope === "all" || position.exposure === scope), names, query, "all"), managers, channel, detail);
-    const result = groupNasdaqHoldings(matching, names);
+    const result = groupNasdaqHoldings(matching, names, qdiiFunds);
     result.sort((a, b) => sort === "symbol" ? a.symbol.localeCompare(b.symbol) :
       sort === "navDate" ? (b.navAsOf ?? "").localeCompare(a.navAsOf ?? "") || a.symbol.localeCompare(b.symbol) :
       sort === "gain" ? (b.holdingPnl ?? Number.NEGATIVE_INFINITY) - (a.holdingPnl ?? Number.NEGATIVE_INFINITY) || a.symbol.localeCompare(b.symbol) :
         (b.marketValue ?? Number.NEGATIVE_INFINITY) - (a.marketValue ?? Number.NEGATIVE_INFINITY) || a.symbol.localeCompare(b.symbol));
     return result;
-  }, [positions, names, managers, query, channel, detail, sort, scope]);
+  }, [positions, names, managers, qdiiFunds, query, channel, detail, sort, scope]);
 
   const summary = useMemo(() => summarizeNasdaqHoldings(groups), [groups]);
   const isFiltered = channel !== "all" || query.trim().length > 0 || scope !== "all";
@@ -130,7 +128,7 @@ function HoldingCard({ group, fundOptions, fundManagers, syncError }: { group: H
       <div className="grid w-full min-w-0 grid-cols-2 gap-x-5 gap-y-2 sm:gap-x-8 lg:w-[510px] lg:shrink-0 lg:grid-cols-[repeat(3,minmax(0,1fr))]">
         <CardMetric label={group.unvaluedCount ? "已估值资产" : "资产合计"} value={<Money value={marketValueIncludingPending(group.marketValue, group.pendingCash)} />} />
         <CardMetric label="持有收益" value={<Money value={group.holdingPnl} signed />} />
-        <CardMetric label={incomeLabel(group.navAsOf)} value={<Money value={group.today} signed />} />
+        <CardMetric label={incomeLabel(group.incomeDate)} value={<Money value={group.today} signed />} />
       </div>
       <ChevronDown className="absolute right-5 top-6 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 lg:static" aria-hidden="true" />
     </summary>
@@ -158,14 +156,14 @@ function ChannelSummary({ channel, group, fundOptions, fundManagers }: { channel
     </div>
     <div className="hidden space-y-1 pr-3 text-sm @min-[52rem]/channels:block"><p className="font-semibold"><Money value={marketValueIncludingPending(channel.marketValue, channel.pendingCash)} /></p><p className="text-xs text-muted-foreground">已确认 <Money value={channel.marketValue} /></p><p className="text-xs text-muted-foreground">待确认 <Money value={channel.pendingCash} /></p></div>
     <div className="hidden space-y-1 pr-3 text-sm @min-[52rem]/channels:block"><p><Money value={channel.unitCost} fractionDigits={4} /></p><p className="text-xs text-muted-foreground"><Qty value={channel.shares} /> 份</p><p className="text-xs text-muted-foreground">成本 <Money value={channel.cost} /></p></div>
-    <div className="hidden space-y-1 pr-3 text-sm @min-[52rem]/channels:block"><p><Money value={channel.holdingPnl} signed /></p><p className="text-xs text-muted-foreground">{incomeLabel(channel.navAsOf)}</p><p><Money value={channel.today} signed className="text-xs" /></p></div>
+    <div className="hidden space-y-1 pr-3 text-sm @min-[52rem]/channels:block"><p><Money value={channel.holdingPnl} signed /></p><p className="text-xs text-muted-foreground">{incomeLabel(fundIncomeDate(channel.navAsOf, group.isQdii))}</p><p><Money value={channel.today} signed className="text-xs" /></p></div>
     <div className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-4 py-4 @min-[52rem]/channels:hidden">
       <CardMetric label="持仓单价" value={<Money value={channel.unitCost} fractionDigits={4} />} />
       <CardMetric label="持有份额" value={<Qty value={channel.shares} />} />
       <CardMetric label="持仓成本" value={<Money value={channel.cost} />} />
       <CardMetric label="持有收益" value={<Money value={channel.holdingPnl} signed />} />
       <CardMetric label="已确认市值" value={<Money value={channel.marketValue} />} />
-      <CardMetric label={incomeLabel(channel.navAsOf)} value={<Money value={channel.today} signed />} />
+      <CardMetric label={incomeLabel(fundIncomeDate(channel.navAsOf, group.isQdii))} value={<Money value={channel.today} signed />} />
     </div>
     <div className="space-y-3 @min-[52rem]/channels:min-w-0">
       {channel.pendingPositions.length ? <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs @min-[52rem]/channels:justify-end @min-[52rem]/channels:bg-transparent @min-[52rem]/channels:p-0"><span className="text-muted-foreground @min-[52rem]/channels:hidden">待确认资金 <Money value={channel.pendingCash} className="text-foreground" /></span><PendingHoldingsDialog positions={channel.pendingPositions} names={fundOptions} managers={fundManagers} trigger={<button type="button" className="font-medium text-copper underline underline-offset-4">查看 {channel.pendingPositions.length} 笔待确认 →</button>} /></div> : null}

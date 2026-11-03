@@ -1,4 +1,15 @@
 import type { PositionDetail } from "@/server/ledger";
+import { advanceWeekdays } from "./format";
+
+/** Nasdaq catalog names sometimes omit QDII; other funds expose it in their type or name. */
+export function isQdiiFund(name: string, fundType: string | null, isNasdaq: boolean): boolean {
+  return isNasdaq || /QDII/i.test(`${name} ${fundType ?? ""}`);
+}
+
+/** Display dates only: valuation always uses the original published NAV. */
+export function fundIncomeDate(navDate: string | null, isQdii: boolean): string | null {
+  return navDate && isQdii ? advanceWeekdays(navDate, 1) : navDate;
+}
 
 /** Apply the same fund and account filters to both the list and the overview. */
 export function filterHoldingPositions(positions: PositionDetail[], names: Record<string, string>, query: string, account: string): PositionDetail[] {
@@ -12,6 +23,8 @@ export function filterHoldingPositions(positions: PositionDetail[], names: Recor
 export type HoldingGroup = {
   symbol: string;
   name: string;
+  isQdii: boolean;
+  incomeDate: string | null;
   positions: PositionDetail[];
   settledCount: number;
   pendingCount: number;
@@ -78,7 +91,7 @@ export function groupHoldingChannels(positions: PositionDetail[]): HoldingChanne
   });
 }
 
-export function groupNasdaqHoldings(positions: PositionDetail[], names: Record<string, string>): HoldingGroup[] {
+export function groupNasdaqHoldings(positions: PositionDetail[], names: Record<string, string>, qdiiFunds: Record<string, boolean> = {}): HoldingGroup[] {
   const bySymbol = new Map<string, PositionDetail[]>();
   for (const position of positions.filter((item) => (item.exposure === "nasdaq" || item.exposure === "fund"))) {
     const rows = bySymbol.get(position.symbol) ?? [];
@@ -90,9 +103,13 @@ export function groupNasdaqHoldings(positions: PositionDetail[], names: Record<s
     const pending = rows.filter((row) => row.status === "pending");
     const valued = settled.filter((row) => row.marketValue != null);
     const dayValued = settled.filter((row) => row.today != null);
+    const navAsOf = settled.map((row) => row.navAsOf).filter((date): date is string => Boolean(date)).sort().at(0) ?? null;
+    const isQdii = qdiiFunds[symbol] ?? isQdiiFund(names[symbol] ?? "", null, rows.some((row) => row.exposure === "nasdaq"));
     return {
       symbol,
       name: names[symbol] ?? symbol,
+      isQdii,
+      incomeDate: fundIncomeDate(navAsOf, isQdii),
       positions: rows.sort((a, b) => Number(a.status === "pending") - Number(b.status === "pending") || a.id - b.id),
       settledCount: settled.length,
       pendingCount: pending.length,
@@ -102,7 +119,7 @@ export function groupNasdaqHoldings(positions: PositionDetail[], names: Record<s
       today: dayValued.length ? dayValued.reduce((sum, row) => sum + row.today!, 0) : null,
       pendingCash: pending.reduce((sum, row) => sum + row.cashDebited, 0),
       unvaluedCount: settled.length - valued.length,
-      navAsOf: settled.map((row) => row.navAsOf).filter((date): date is string => Boolean(date)).sort().at(0) ?? null,
+      navAsOf,
     };
   });
 }
@@ -112,8 +129,8 @@ export function summarizeNasdaqHoldings(groups: HoldingGroup[]) {
   const pendingCount = groups.reduce((sum, group) => sum + group.pendingCount, 0);
   const valued = groups.filter((group) => group.marketValue != null);
   const todayValued = groups.filter((group) => group.today != null);
-  const incomeDate = todayValued.map((group) => group.navAsOf).filter((date): date is string => Boolean(date)).sort().at(-1) ?? null;
-  const incomeGroups = todayValued.filter((group) => group.navAsOf === incomeDate);
+  const incomeDate = todayValued.map((group) => group.incomeDate).filter((date): date is string => Boolean(date)).sort().at(-1) ?? null;
+  const incomeGroups = todayValued.filter((group) => group.incomeDate === incomeDate);
   return {
     fundCount: groups.length,
     settledCount,

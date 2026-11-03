@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PositionDetail } from "@/server/ledger";
-import { filterHoldingPositions, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, summarizeNasdaqHoldings } from "./holdings-dashboard";
+import { filterHoldingPositions, fundIncomeDate, groupHoldingChannels, groupNasdaqHoldings, isQdiiFund, marketValueIncludingPending, summarizeNasdaqHoldings } from "./holdings-dashboard";
 
 function row(input: Partial<PositionDetail> & Pick<PositionDetail, "id" | "symbol" | "status">): PositionDetail {
   return {
@@ -14,13 +14,49 @@ function row(input: Partial<PositionDetail> & Pick<PositionDetail, "id" | "symbo
 }
 
 describe("持仓管理汇总", () => {
-  it("组合单日收益显示实际净值日期，不混加不同日期的收益", () => {
+  it("组合单日收益按展示日期归集，不混加不同日期的收益", () => {
     const groups = groupNasdaqHoldings([
       row({ id: 1, symbol: "021778", status: "settled", navAsOf: "2026-10-08", today: 242.18 }),
       row({ id: 2, symbol: "016452", status: "settled", navAsOf: "2026-10-09", today: 10 }),
     ], {});
-    expect(summarizeNasdaqHoldings(groups)).toMatchObject({ incomeDate: "2026-10-09", today: 10, incomeFundCount: 1, datedIncomeFundCount: 2 });
+    expect(summarizeNasdaqHoldings(groups)).toMatchObject({ incomeDate: "2026-10-12", today: 10, incomeFundCount: 1, datedIncomeFundCount: 2 });
     expect(summarizeNasdaqHoldings([])).toMatchObject({ incomeDate: null, today: null });
+  });
+
+  it("008986 的收益日期与当日净值一致，QDII 仍顺延到下一个工作日", () => {
+    const groups = groupNasdaqHoldings([
+      row({ id: 1, symbol: "008986", exposure: "fund", status: "settled", navAsOf: "2026-11-02", today: -333.18 }),
+      row({ id: 2, symbol: "016452", status: "settled", navAsOf: "2026-10-30", today: -901.90 }),
+    ], { "008986": "广发上海金ETF联接A", "016452": "南方纳斯达克100指数发起(QDII)A" }, { "008986": false, "016452": true });
+    expect(groups[0]).toMatchObject({ isQdii: false, navAsOf: "2026-11-02", incomeDate: "2026-11-02", today: -333.18, marketValue: 120 });
+    expect(groups[1]).toMatchObject({ isQdii: true, navAsOf: "2026-10-30", incomeDate: "2026-11-02", today: -901.90 });
+    expect(summarizeNasdaqHoldings(groups)).toMatchObject({ incomeDate: "2026-11-02", incomeFundCount: 2 });
+    expect(summarizeNasdaqHoldings(groups).today).toBeCloseTo(-1235.08);
+  });
+
+  it("相同净值日期的 QDII 与非 QDII 收益不归到同一个展示日", () => {
+    const groups = groupNasdaqHoldings([
+      row({ id: 1, symbol: "008986", exposure: "fund", status: "settled", navAsOf: "2026-11-02", today: -333.18 }),
+      row({ id: 2, symbol: "016452", status: "settled", navAsOf: "2026-11-02", today: 10 }),
+    ], {}, { "008986": false, "016452": true });
+    expect(summarizeNasdaqHoldings(groups)).toMatchObject({ incomeDate: "2026-11-03", today: 10, incomeFundCount: 1, datedIncomeFundCount: 2 });
+    expect(summarizeNasdaqHoldings(groups.slice(0, 1))).toMatchObject({ incomeDate: "2026-11-02", today: -333.18, incomeFundCount: 1 });
+  });
+
+  it("QDII 根据基金类型、名称与已知纳指目录识别，不把其他基金一律视作非 QDII", () => {
+    expect(isQdiiFund("广发上海金ETF联接A", "指数型-其他", false)).toBe(false);
+    expect(isQdiiFund("南方中证500ETF联接(LOF)A", "指数型-股票", false)).toBe(false);
+    expect(isQdiiFund("全球股票指数", "QDII-股票", false)).toBe(true);
+    expect(isQdiiFund("海外指数(QDII)A", null, false)).toBe(true);
+    expect(isQdiiFund("国泰纳斯达克100指数", "index", true)).toBe(true);
+    expect(fundIncomeDate(null, true)).toBeNull();
+    expect(fundIncomeDate(null, false)).toBeNull();
+    expect(fundIncomeDate("2026-10-30", false)).toBe("2026-10-30");
+    expect(fundIncomeDate("2026-10-30", true)).toBe("2026-11-02");
+    const [otherQdii] = groupNasdaqHoldings([
+      row({ id: 1, symbol: "999993", exposure: "fund", status: "settled", navAsOf: "2026-10-30" }),
+    ], { "999993": "全球股票指数" }, { "999993": true });
+    expect(otherQdii.incomeDate).toBe("2026-11-02");
   });
   it("按基金合并账户，区分已确认市值和在途资金", () => {
     const groups = groupNasdaqHoldings([
