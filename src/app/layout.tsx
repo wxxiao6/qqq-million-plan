@@ -31,7 +31,14 @@ export const metadata: Metadata = {
   description: "个人财务工作台：资产、持仓、纳指额度与市场关注度。",
   applicationName: "百万纳指计划",
   appleWebApp: { capable: true, title: "百万纳指", statusBarStyle: "default" },
-  icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
+  icons: {
+    icon: [
+      { url: "/icons/nasdaq-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/nasdaq-16.png", sizes: "16x16", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/icons/nasdaq-apple-touch.png",
+  },
 };
 
 export const viewport: Viewport = {

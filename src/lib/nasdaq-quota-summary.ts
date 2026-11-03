@@ -1,3 +1,4 @@
+import { decimal, roundMoney, sumMoney } from "./decimal";
 export type QuotaSummaryRow = {
   code: string;
   directStatus: "verified" | "unverified" | "unavailable" | null;
@@ -34,7 +35,7 @@ export function sumVerifiedQuota(rows: QuotaSummaryRow[], channel: "direct" | "a
     limits.set(key, limits.has(key) ? Math.min(limits.get(key)!, limit) : limit);
   }
   return {
-    total: [...limits.values()].reduce((sum, value) => sum + value, 0),
+    total: sumMoney([...limits.values()]),
     quotaGroups: limits.size,
     coveredShares,
     totalShares: rows.length,
@@ -70,7 +71,7 @@ export function estimatePurchasableQuota(rows: QuotaSummaryRow[]) {
   });
   let total = 0;
   for (const group of groups.values()) {
-    total += Math.max(sumVerifiedQuota(group, "direct").total, sumVerifiedQuota(group, "agency").total);
+    total = decimal(total).plus(Math.max(sumVerifiedQuota(group, "direct").total, sumVerifiedQuota(group, "agency").total)).toNumber();
   }
   const coveredShares = rows.filter((row) =>
     ["direct", "agency"].some((channel) => {
@@ -80,5 +81,5 @@ export function estimatePurchasableQuota(rows: QuotaSummaryRow[]) {
       return verified !== "unavailable" && (status === "paused" ||
         (verified === "verified" && status === "limited" && limit != null && Number.isFinite(limit) && limit >= 0));
     })).length;
-  return { total, coveredShares, totalShares: rows.length };
+  return { total: roundMoney(total), coveredShares, totalShares: rows.length };
 }

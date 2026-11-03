@@ -1,3 +1,4 @@
+import { decimal, roundMoney, sumDecimal, sumMoney } from "./decimal";
 import type { PositionDetail } from "@/server/ledger";
 import { advanceWeekdays } from "./format";
 
@@ -94,21 +95,21 @@ export function groupHoldingChannels(positions: PositionDetail[]): HoldingChanne
     const navs = settledPositions.filter((row) => row.nav != null).map((row) => row.nav!);
     const navDates = settledPositions.map((row) => row.navAsOf).filter((date): date is string => Boolean(date));
     const shares = settledPositions.length > 0 && settledPositions.every((row) => row.shares != null)
-      ? settledPositions.reduce((sum, row) => sum + row.shares!, 0)
+      ? sumDecimal(settledPositions.map((row) => row.shares!))
       : null;
-    const cost = settledPositions.reduce((sum, row) => sum + row.cost, 0);
+    const cost = sumMoney(settledPositions.map((row) => row.cost));
     return {
       account,
       positions: rows,
       settledPositions,
       pendingPositions,
       shares,
-      unitCost: shares != null && shares > 0 ? cost / shares : null,
+      unitCost: shares != null && shares > 0 ? decimal(cost).div(shares).toNumber() : null,
       cost,
-      pendingCash: pendingPositions.reduce((sum, row) => sum + row.cashDebited, 0),
-      marketValue: valued.length ? valued.reduce((sum, row) => sum + row.marketValue!, 0) : null,
-      holdingPnl: valued.length ? valued.reduce((sum, row) => sum + (row.holdingPnl ?? 0), 0) : null,
-      today: dayValued.length ? dayValued.reduce((sum, row) => sum + row.today!, 0) : null,
+      pendingCash: sumMoney(pendingPositions.map((row) => row.cashDebited)),
+      marketValue: valued.length ? sumMoney(valued.map((row) => row.marketValue!)) : null,
+      holdingPnl: valued.length ? roundMoney(decimal(sumMoney(valued.map((row) => row.marketValue!))).minus(sumMoney(valued.map((row) => row.cost)))) : null,
+      today: dayValued.length ? sumMoney(dayValued.map((row) => row.today!)) : null,
       nav: navs.length > 0 && navs.every((value) => value === navs[0]) ? navs[0] : null,
       navAsOf: navDates.length > 0 && navDates.every((value) => value === navDates[0]) ? navDates[0] : null,
     };
@@ -126,7 +127,9 @@ export function groupNasdaqHoldings(positions: PositionDetail[], names: Record<s
     const settled = rows.filter((row) => row.status === "settled");
     const pending = rows.filter((row) => row.status === "pending");
     const valued = settled.filter((row) => row.marketValue != null);
-    const dayValued = settled.filter((row) => row.today != null);
+    const channels = groupHoldingChannels(rows);
+    const valuedChannels = channels.filter((channel) => channel.marketValue != null);
+    const dayChannels = channels.filter((channel) => channel.today != null);
     const navAsOf = settled.map((row) => row.navAsOf).filter((date): date is string => Boolean(date)).sort().at(0) ?? null;
     const isQdii = qdiiFunds[symbol] ?? isQdiiFund(names[symbol] ?? "", null, rows.some((row) => row.exposure === "nasdaq"));
     return {
@@ -137,11 +140,11 @@ export function groupNasdaqHoldings(positions: PositionDetail[], names: Record<s
       positions: rows.sort((a, b) => Number(a.status === "pending") - Number(b.status === "pending") || a.id - b.id),
       settledCount: settled.length,
       pendingCount: pending.length,
-      cost: settled.reduce((sum, row) => sum + row.cost, 0),
-      marketValue: valued.length ? valued.reduce((sum, row) => sum + row.marketValue!, 0) : null,
-      holdingPnl: valued.length ? valued.reduce((sum, row) => sum + (row.holdingPnl ?? 0), 0) : null,
-      today: dayValued.length ? dayValued.reduce((sum, row) => sum + row.today!, 0) : null,
-      pendingCash: pending.reduce((sum, row) => sum + row.cashDebited, 0),
+      cost: sumMoney(channels.map((channel) => channel.cost)),
+      marketValue: valuedChannels.length ? sumMoney(valuedChannels.map((channel) => channel.marketValue!)) : null,
+      holdingPnl: valuedChannels.length ? sumMoney(valuedChannels.map((channel) => channel.holdingPnl ?? 0)) : null,
+      today: dayChannels.length ? sumMoney(dayChannels.map((channel) => channel.today!)) : null,
+      pendingCash: sumMoney(pending.map((row) => row.cashDebited)),
       unvaluedCount: settled.length - valued.length,
       navAsOf,
     };
@@ -159,18 +162,18 @@ export function summarizeNasdaqHoldings(groups: HoldingGroup[]) {
     fundCount: groups.length,
     settledCount,
     pendingCount,
-    cost: groups.reduce((sum, group) => sum + group.cost, 0),
-    marketValue: valued.length ? valued.reduce((sum, group) => sum + group.marketValue!, 0) : null,
-    holdingPnl: valued.length ? valued.reduce((sum, group) => sum + (group.holdingPnl ?? 0), 0) : null,
-    today: incomeGroups.length ? incomeGroups.reduce((sum, group) => sum + group.today!, 0) : null,
+    cost: sumMoney(groups.map((group) => group.cost)),
+    marketValue: valued.length ? sumMoney(valued.map((group) => group.marketValue!)) : null,
+    holdingPnl: valued.length ? sumMoney(valued.map((group) => group.holdingPnl ?? 0)) : null,
+    today: incomeGroups.length ? sumMoney(incomeGroups.map((group) => group.today!)) : null,
     incomeDate,
     incomeFundCount: incomeGroups.length,
     datedIncomeFundCount: todayValued.length,
-    pendingCash: groups.reduce((sum, group) => sum + group.pendingCash, 0),
+    pendingCash: sumMoney(groups.map((group) => group.pendingCash)),
     unvaluedCount: groups.reduce((sum, group) => sum + group.unvaluedCount, 0),
   };
 }
 
 export function marketValueIncludingPending(marketValue: number | null, pendingCash: number): number | null {
-  return marketValue == null ? (pendingCash > 0 ? pendingCash : null) : marketValue + pendingCash;
+  return marketValue == null ? (pendingCash > 0 ? pendingCash : null) : roundMoney(decimal(marketValue).plus(pendingCash));
 }

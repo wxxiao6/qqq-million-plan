@@ -13,9 +13,9 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#f7f3ec",
     theme_color: "#f7f3ec",
     icons: [
-      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/icons/nasdaq-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icons/nasdaq-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icons/nasdaq-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
       { name: "我的持仓", url: "/holdings/manage" },

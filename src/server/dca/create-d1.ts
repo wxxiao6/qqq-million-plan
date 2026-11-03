@@ -1,3 +1,5 @@
+import { investedTotalDeltaSql } from "@/lib/sql-money";
+import { decimal, isMoneyAmount } from "@/lib/decimal";
 import { advanceDebitDate, calculateDcaFee, dcaPostNote, deriveNextDebitDate, normalizeDcaFee, resolveDcaAccount, roundDcaMoney, validateDcaInput,
   type DcaChannelKind, type DcaFrequency, type DcaInput } from "@/lib/dca";
 import { beijingTodayISO, isISODate } from "@/lib/format";
@@ -13,6 +15,7 @@ export async function createDcaPlanD1(db: ReconcileD1, input: DcaInput, today = 
     if (!isISODate(execution.executionDate ?? "")) return { ok: false, error: "请输入实际买入日期" };
     if (execution.actualCashDebited != null && (!Number.isFinite(execution.actualCashDebited) || execution.actualCashDebited <= 0)) return { ok: false, error: "实际扣款金额不合法" };
     if (execution.actualFeeAmount != null && (!Number.isFinite(execution.actualFeeAmount) || execution.actualFeeAmount < 0)) return { ok: false, error: "实际手续费不合法" };
+    if ((execution.actualCashDebited != null && !isMoneyAmount(execution.actualCashDebited)) || (execution.actualFeeAmount != null && !isMoneyAmount(execution.actualFeeAmount))) return { ok: false, error: "扣款金额和手续费最多保留两位小数" };
   }
   const account = resolveDcaAccount(input.channelKind as DcaChannelKind, input.account);
   if (!account.ok) return account;
@@ -42,7 +45,7 @@ export async function createDcaPlanD1(db: ReconcileD1, input: DcaInput, today = 
   const initialDate = deriveNextDebitDate({ frequency, startDate: input.startDate, weekday, monthDay });
   const now = new Date().toISOString();
   const autoFee = calculateDcaFee(input.amount, fee.feeKind, fee.feeValue);
-  const autoCost = roundDcaMoney(input.amount - autoFee);
+  const autoCost = roundDcaMoney(decimal(input.amount).minus(autoFee).toNumber());
   const key = [symbol, account.account] as const;
   // The active plan is unique under this guard, so later statements can find
   // its ID without relying on connection-scoped last_insert_rowid().
@@ -60,13 +63,13 @@ export async function createDcaPlanD1(db: ReconcileD1, input: DcaInput, today = 
     const executionDate = execution.executionDate!;
     const cash = execution.actualCashDebited ?? input.amount;
     const manualFee = calculateDcaFee(cash, fee.feeKind, fee.feeValue, execution.actualFeeAmount);
-    const cost = roundDcaMoney(cash - manualFee);
+    const cost = roundDcaMoney(decimal(cash).minus(manualFee).toNumber());
     if (cost <= 0) return { ok: false, error: "手续费不能大于等于定投金额" };
     statements.push(bind(`INSERT INTO positions (account,exposure,symbol,shares,cost,status,note,recorded_on,execution_on,updated_at,dca_plan_id,cash_debited,fee_amount,cutoff_period,order_origin)
       VALUES (?,'nasdaq',?,NULL,?,'pending',?,?,?,?,${planId},?,?,?,'dca')`,
     account.account, symbol, cost, dcaPostNote(executionDate), executionDate, executionDate, now, ...key, cash, manualFee,
     execution.status === "bought_before_cutoff" ? "before_15" : "after_15"));
-    statements.push(bind(`UPDATE dca_plans SET invested_total=invested_total+?,updated_at=? WHERE id=${planId}`, cost, now, ...key));
+    statements.push(bind(`UPDATE dca_plans SET invested_total=${investedTotalDeltaSql()},updated_at=? WHERE id=${planId}`, cost, now, ...key));
   }
   for (const dueDate of due) {
     statements.push(bind(`INSERT INTO positions (account,exposure,symbol,shares,cost,status,note,recorded_on,execution_on,updated_at,dca_plan_id,cash_debited,fee_amount,cutoff_period,order_origin,auto_generated)
@@ -74,7 +77,7 @@ export async function createDcaPlanD1(db: ReconcileD1, input: DcaInput, today = 
       WHERE NOT EXISTS (SELECT 1 FROM positions WHERE dca_plan_id=${planId} AND execution_on=?)`,
     account.account, symbol, autoCost, dueDate < today ? "定投初始化自动补录" : "定投计划自动记账", dueDate, dueDate, now, ...key,
     input.amount, autoFee, input.cutoffPeriod ?? "before_15", ...key, dueDate));
-    statements.push(bind(`UPDATE dca_plans SET invested_total=invested_total+?,updated_at=? WHERE id=${planId} AND changes()=1`, autoCost, now, ...key));
+    statements.push(bind(`UPDATE dca_plans SET invested_total=${investedTotalDeltaSql()},updated_at=? WHERE id=${planId} AND changes()=1`, autoCost, now, ...key));
   }
   statements.push(bind(`UPDATE dca_plans SET imported_through=?,next_debit_date=? WHERE id=${planId}`, today, date, ...key));
   statements.push(autoEstimateStatement(db, symbol, today, now));

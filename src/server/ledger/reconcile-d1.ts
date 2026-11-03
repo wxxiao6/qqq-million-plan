@@ -1,3 +1,5 @@
+import { investedTotalDeltaSql } from "@/lib/sql-money";
+import { decimal } from "@/lib/decimal";
 import { advanceDebitDate, calculateDcaFee, deriveNextDebitDate, roundDcaMoney, type DcaFeeKind, type DcaFrequency } from "@/lib/dca";
 import { beijingTodayISO, isISODate, shiftISO } from "@/lib/format";
 
@@ -54,7 +56,7 @@ export async function prepareDcaReconciliationD1(db: ReconcileD1, planId: number
       !["before_15", "after_15"].includes(plan.cutoff_period))) throw new Error(`${plan.symbol} 定投计划数据不合法`);
 
   const now = new Date().toISOString();
-  const cost = roundDcaMoney(plan.amount - fee);
+  const cost = roundDcaMoney(decimal(plan.amount).minus(fee).toNumber());
   // value is NOT NULL. This statement writes nothing when the plan matches;
   // otherwise the constraint violation rolls back the entire batch.
   const statements = [prepare(`INSERT INTO app_kv(key,value) SELECT '__dca_plan_guard__', NULL
@@ -79,7 +81,7 @@ export async function prepareDcaReconciliationD1(db: ReconcileD1, planId: number
         AND EXISTS (SELECT 1 FROM nasdaq_funds WHERE code=? AND currency='CNY')`,
     plan.account, plan.symbol, cost, executionOn, executionOn, now, planId, plan.amount, fee, plan.cutoff_period,
     planId, executionOn, plan.symbol));
-    statements.push(prepare(`UPDATE dca_plans SET invested_total=invested_total+?, next_debit_date=?, updated_at=? WHERE id=? AND changes()=1`,
+    statements.push(prepare(`UPDATE dca_plans SET invested_total=${investedTotalDeltaSql()}, next_debit_date=?, updated_at=? WHERE id=? AND changes()=1`,
       cost, advanceDebitDate({ frequency: plan.frequency, lastDue: executionOn, monthDay: plan.month_day }), now, planId));
   }
   if (reconcile) {
@@ -125,7 +127,10 @@ export async function reconcileDueDcaPlansD1(db: ReconcileD1, today = beijingTod
 
 /** Recalculate all automatic pending lots for a symbol inside the caller's batch. */
 export function autoEstimateStatement(db: ReconcileD1, symbol: string, today: string, now: string): D1Statement {
-  return db.prepare(`WITH history AS MATERIALIZED (
+  // Integer long division computes cents * 10^8 / NAV-units without a large
+  // intermediate product or a binary-floating half-cent tie. Eight steps keep
+  // the update atomic even when NAVs were inserted earlier in the same batch.
+  return db.prepare(`WITH RECURSIVE history AS MATERIALIZED (
       SELECT as_of,nav FROM nav_snapshots WHERE symbol=? AND as_of<=? AND nav>0 ORDER BY as_of DESC LIMIT 3
     ), chosen AS MATERIALIZED (
       SELECT p.id,p.cost,p.t_date,p.t_nav,
@@ -137,9 +142,22 @@ export function autoEstimateStatement(db: ReconcileD1, symbol: string, today: st
       SELECT chosen.*, COALESCE((SELECT nav FROM history WHERE as_of=selected_date),
         CASE WHEN selected_date=t_date THEN t_nav END) AS selected_nav
       FROM chosen
+    ), scaled AS MATERIALIZED (
+      SELECT *,CAST(ROUND(cost*100,0) AS INTEGER) AS cents,
+        CAST(ROUND(selected_nav*100000000,0) AS INTEGER) AS nav_units FROM resolved
+      WHERE selected_nav>0 AND ROUND(cost,2)=cost
+        AND selected_nav=ROUND(selected_nav,8)
+    ), division(id,selected_nav,selected_date,denominator,quotient,remainder,step) AS (
+      SELECT id,selected_nav,selected_date,nav_units,cents/nav_units,cents%nav_units,0 FROM scaled
+      WHERE nav_units BETWEEN 1 AND 900719925474099 AND cents BETWEEN 0 AND 9007199254740991
+      UNION ALL
+      SELECT id,selected_nav,selected_date,denominator,
+        quotient*10+(remainder*10)/denominator,(remainder*10)%denominator,step+1 FROM division
+      WHERE step<8 AND quotient<=900719925474099
     )
-    UPDATE positions SET shares=ROUND(resolved.cost/resolved.selected_nav,2), t_nav=resolved.selected_nav,
-      t_date=resolved.selected_date, status='settled', recorded_on=resolved.selected_date,
+    UPDATE positions SET shares=(division.quotient+CASE WHEN division.remainder>=(division.denominator+1)/2 THEN 1 ELSE 0 END)/100.0,
+      t_nav=division.selected_nav,t_date=division.selected_date, status='settled', recorded_on=division.selected_date,
       confirmed_on=?, updated_at=?
-    FROM resolved WHERE positions.id=resolved.id AND resolved.selected_nav>0`).bind(symbol, today, symbol, today, now);
+    FROM division WHERE positions.id=division.id AND division.step=8
+      AND division.quotient+CASE WHEN division.remainder>=(division.denominator+1)/2 THEN 1 ELSE 0 END<=9007199254740991`).bind(symbol, today, symbol, today, now);
 }

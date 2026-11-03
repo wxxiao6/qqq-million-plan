@@ -1,7 +1,7 @@
 /* Bump the version when changing offline assets. Financial pages are network-only. */
-const CACHE = "million-plan-pwa-v1";
+const CACHE = "million-plan-pwa-v2";
 const OFFLINE = "/offline.html";
-const ASSETS = [OFFLINE, "/icons/icon-192.png", "/icons/icon-512.png", "/icons/maskable-512.png", "/icons/apple-touch-icon.png"];
+const ASSETS = [OFFLINE, "/brand/nasdaq-mark.svg", "/favicon.ico", "/icons/nasdaq-16.png", "/icons/nasdaq-32.png", "/icons/nasdaq-192.png", "/icons/nasdaq-512.png", "/icons/nasdaq-maskable-512.png", "/icons/nasdaq-apple-touch.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));

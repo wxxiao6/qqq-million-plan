@@ -1,10 +1,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type Database from "better-sqlite3";
+import Database from "better-sqlite3";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { saveNavChunkD1, syncNavChunkD1, updatePortfolioSnapshotD1 } from "./nav-d1";
 import type { MarketD1 } from "./tiantian-d1";
+import type { ReconcileD1 } from "../ledger/reconcile-d1";
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), "nav-d1-"));
 vi.stubEnv("P0_TEST_DB", path.join(tmp, "ledger.sqlite"));
@@ -69,6 +70,39 @@ describe("D1 NAV chunk", () => {
     const db = getDb();
     await expect(saveNavChunkD1(binding(db, 1), [{ ...record, navDate: "2026-10-30" }], "tiantian", "2026-10-30T14:00:00Z")).rejects.toThrow("simulated failure");
     expect(db.prepare("SELECT * FROM fund_nav_history WHERE code='016452' AND nav_date='2026-10-30'").get()).toBeUndefined();
+  });
+
+  it("matches decimal half-up estimates at cent ties and account-level valuation rounding", async () => {
+    const { getDb } = await import("../db");
+    const { updateAutoPendingEstimates } = await import("../ledger/recent-pending");
+    const { autoEstimateStatement } = await import("../ledger/reconcile-d1");
+    const db = getDb();
+    const cases = [[2.01, 2, 1.01], [10.01, 2, 5.01], [0.29, 2, 0.15], [985.22, 1.2345, 798.07]];
+    for (const [index, [cost, nav]] of cases.entries()) {
+      const symbol = `99000${index}`;
+      db.prepare("INSERT INTO nav_snapshots(symbol,as_of,nav,source) VALUES (?,'2026-11-02',?,'precision-test')").run(symbol, nav);
+      db.prepare(`INSERT INTO positions(account,exposure,symbol,cost,status,execution_on,cutoff_period,auto_generated,updated_at)
+        VALUES ('alipay','nasdaq',?,?,'pending','2026-11-02','before_15',1,'2026-11-02')`).run(symbol, cost);
+    }
+    db.pragma("journal_mode = DELETE");
+    const cloud = new Database(db.serialize());
+    try {
+      for (const [index, [, , shares]] of cases.entries()) {
+        const symbol = `99000${index}`;
+        updateAutoPendingEstimates(symbol, "2026-11-03");
+        await binding(cloud).batch([autoEstimateStatement(binding(cloud) as unknown as ReconcileD1, symbol, "2026-11-03", "2026-11-03")]);
+        for (const database of [db, cloud]) expect(database.prepare("SELECT status,shares FROM positions WHERE symbol=?").get(symbol)).toEqual({ status: "settled", shares });
+      }
+      cloud.exec("DELETE FROM positions; DELETE FROM nav_snapshots");
+      cloud.prepare("INSERT INTO nav_snapshots(symbol,as_of,nav,source) VALUES ('990009','2026-11-02',1.005,'precision-test')").run();
+      for (const account of ["alipay", "alipay", "jd"]) cloud.prepare(`INSERT INTO positions(account,exposure,symbol,shares,cost,status,updated_at)
+        VALUES (?,'nasdaq','990009',1,1,'settled','2026-11-03')`).run(account);
+      await updatePortfolioSnapshotD1(binding(cloud), "2026-11-03");
+      expect(cloud.prepare("SELECT dynamic_mv FROM portfolio_snapshots WHERE as_of='2026-11-03'").get()).toEqual({ dynamic_mv: 3.02 });
+    } finally {
+      cloud.close();
+      db.exec("DELETE FROM positions WHERE symbol LIKE '99000%'; DELETE FROM nav_snapshots WHERE symbol LIKE '99000%'");
+    }
   });
 
   it("reports source errors and enforces the per-request limit", async () => {

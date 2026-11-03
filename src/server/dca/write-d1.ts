@@ -1,3 +1,6 @@
+import { investedTotalDeltaSql } from "@/lib/sql-money";
+import { decimal, isMoneyAmount } from "@/lib/decimal";
+import { estimateFundShares } from "@/lib/decimal";
 import { advanceDebitDate, calculateDcaFee, dcaPostNote, roundDcaMoney, type DcaExecutionInput, type DcaFeeKind, type DcaFrequency } from "@/lib/dca";
 import { beijingTodayISO, isISODate } from "@/lib/format";
 import { reconcileDueDcaPlanD1, type ReconcileD1 } from "../ledger/reconcile-d1";
@@ -27,6 +30,7 @@ export async function recordPlanExecutionD1(db: ReconcileD1, planId: number, exe
   if (!isISODate(execution.executionDate ?? "")) return { ok: false, error: "请输入实际买入日期" };
   if (execution.actualCashDebited != null && (!Number.isFinite(execution.actualCashDebited) || execution.actualCashDebited <= 0)) return { ok: false, error: "实际扣款金额不合法" };
   if (execution.actualFeeAmount != null && (!Number.isFinite(execution.actualFeeAmount) || execution.actualFeeAmount < 0)) return { ok: false, error: "实际手续费不合法" };
+    if ((execution.actualCashDebited != null && !isMoneyAmount(execution.actualCashDebited)) || (execution.actualFeeAmount != null && !isMoneyAmount(execution.actualFeeAmount))) return { ok: false, error: "扣款金额和手续费最多保留两位小数" };
   if (!Number.isInteger(planId) || planId <= 0) return { ok: false, error: "找不到该纳指定投计划" };
   const bind = (sql: string, ...values: (number | string | null)[]) => db.prepare(sql).bind(...values);
   const date = execution.executionDate!;
@@ -41,7 +45,7 @@ export async function recordPlanExecutionD1(db: ReconcileD1, planId: number, exe
   if (!["alipay", "gf_direct", "cmb", "jd", "other"].includes(plan.account)) return { ok: false, error: "账户不合法" };
   const cash = execution.actualCashDebited ?? plan.amount;
   const fee = calculateDcaFee(cash, plan.fee_kind, plan.fee_value, execution.actualFeeAmount);
-  const cost = roundDcaMoney(cash - fee);
+  const cost = roundDcaMoney(decimal(cash).minus(fee).toNumber());
   if (cost <= 0) return { ok: false, error: "手续费不能大于等于定投金额" };
   const now = new Date().toISOString();
   const cutoff = execution.status === "bought_before_cutoff" ? "before_15" : "after_15";
@@ -56,7 +60,7 @@ export async function recordPlanExecutionD1(db: ReconcileD1, planId: number, exe
       bind(`INSERT INTO positions (account,exposure,symbol,shares,cost,status,note,recorded_on,execution_on,updated_at,dca_plan_id,cash_debited,fee_amount,cutoff_period,order_origin)
         VALUES (?, 'nasdaq', ?, NULL, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, 'dca') RETURNING id`,
       plan.account, plan.symbol, cost, dcaPostNote(date), date, date, now, planId, cash, fee, cutoff),
-      bind(`UPDATE dca_plans SET invested_total=invested_total+?,next_debit_date=?,updated_at=? WHERE id=?`,
+      bind(`UPDATE dca_plans SET invested_total=${investedTotalDeltaSql()},next_debit_date=?,updated_at=? WHERE id=?`,
       cost, advanceDebitDate({ frequency: plan.frequency, lastDue: date, monthDay: plan.month_day }), now, planId),
     ]);
     return { ok: true, id: (result[1].results[0] as { id: number }).id };
@@ -70,6 +74,7 @@ export async function recordPlanExecutionD1(db: ReconcileD1, planId: number, exe
 export async function correctDcaExecutionD1(db: ReconcileD1, input: Correction): Promise<DcaWriteResult> {
   if (!Number.isFinite(input.cashDebited) || input.cashDebited <= 0) return { ok: false, error: "记账金额必须大于 0" };
   if (!Number.isFinite(input.feeAmount) || input.feeAmount < 0 || input.feeAmount >= input.cashDebited) return { ok: false, error: "手续费须小于记账金额" };
+  if (!isMoneyAmount(input.cashDebited) || !isMoneyAmount(input.feeAmount)) return { ok: false, error: "扣款金额和手续费最多保留两位小数" };
   if (!["keep", "failed", "cancelled"].includes(input.outcome)) return { ok: false, error: "处理方式不合法" };
   if (!Number.isInteger(input.id) || input.id <= 0) return { ok: false, error: "找不到可修正的定投记录" };
   const bind = (sql: string, ...values: (number | string | null)[]) => db.prepare(sql).bind(...values);
@@ -77,10 +82,10 @@ export async function correctDcaExecutionD1(db: ReconcileD1, input: Correction):
     FROM positions WHERE id=? AND dca_plan_id IS NOT NULL`, input.id)]);
   const row = result[0].results[0] as Position | undefined;
   if (!row || (row.status !== "pending" && row.status !== "settled")) return { ok: false, error: "找不到可修正的定投记录" };
-  const cost = roundDcaMoney(input.cashDebited - input.feeAmount);
+  const cost = roundDcaMoney(decimal(input.cashDebited).minus(input.feeAmount).toNumber());
   const removed = input.outcome !== "keep";
   const shares = row.auto_generated && row.t_nav && row.t_nav > 0
-    ? Math.round((cost / row.t_nav + Number.EPSILON) * 100) / 100 : row.shares;
+    ? estimateFundShares(cost, row.t_nav) : row.shares;
   const now = new Date().toISOString();
   try {
     await db.batch([
@@ -91,7 +96,7 @@ export async function correctDcaExecutionD1(db: ReconcileD1, input: Correction):
         input.id, row.dca_plan_id, row.status, row.cost, row.auto_generated, row.t_nav, row.shares, row.updated_at, row.cash_debited, row.fee_amount, row.closed_on),
       bind(`UPDATE positions SET cash_debited=?, fee_amount=?, cost=?, shares=?, status=?, closed_on=?, updated_at=? WHERE id=?`,
         input.cashDebited, input.feeAmount, cost, shares, removed ? input.outcome : row.status, removed ? beijingTodayISO() : null, now, input.id),
-      bind(`UPDATE dca_plans SET invested_total=MAX(0,invested_total+?), updated_at=? WHERE id=?`,
+      bind(`UPDATE dca_plans SET invested_total=MAX(0,${investedTotalDeltaSql()}), updated_at=? WHERE id=?`,
         removed ? -row.cost : cost - row.cost, now, row.dca_plan_id),
     ]);
     return { ok: true, id: input.id };

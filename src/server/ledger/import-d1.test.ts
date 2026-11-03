@@ -46,4 +46,25 @@ it("matches SQLite for manual updates and atomic CSV imports", async () => {
   expect((cloud.prepare("SELECT count(*) n FROM positions").get() as { n: number }).n).toBe(2);
   cloud.close(); vi.stubEnv("CLOUDFLARE_RUNTIME", "0");
 });
+it("imports an independent holding beside DCA while still rejecting duplicate CSV entries", async () => {
+  vi.stubEnv("CLOUDFLARE_RUNTIME", "0");
+  const { getDb } = await import("../db");
+  const { upsertDcaPlan, recordPlanExecution } = await import("../dca");
+  const { importPositionsCsv } = await import("./actions");
+  const { importPositionsCsvD1 } = await import("./import-d1");
+  const local = getDb();
+  const plan = upsertDcaPlan({ symbol: "008971", shareClass: "C", channelKind: "direct", amount: 100, frequency: "weekly", weekday: 3, startDate: "2026-10-01" });
+  if (!plan.ok) throw new Error(plan.error);
+  expect(recordPlanExecution(plan.id, { status: "bought_before_cutoff", executionDate: "2026-10-07" }).ok).toBe(true);
+  local.pragma("journal_mode = DELETE");
+  const cloud = new Database(local.serialize());
+  try {
+    const csv = "gf_direct,008971,10,50,settled";
+    expect(await importPositionsCsv(csv)).toEqual({ ok: true });
+    expect(await importPositionsCsvD1(binding(cloud), csv)).toEqual({ ok: true });
+    expect(await importPositionsCsvD1(binding(cloud), csv)).toEqual(await importPositionsCsv(csv));
+    expect(cloud.prepare("SELECT count(*) AS n FROM positions WHERE dca_plan_id=?").get(plan.id)).toEqual({ n: 1 });
+    expect(cloud.prepare("SELECT shares,cost FROM positions WHERE symbol='008971' AND dca_plan_id IS NULL").get()).toEqual({ shares: 10, cost: 50 });
+  } finally { cloud.close(); }
+});
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));

@@ -42,7 +42,7 @@ describe("动态仓资产类型", () => {
     expect(await savePosition({ account: "alipay", symbol: "016452", shares: 100, unitCost: 2, status: "settled" })).toEqual({ ok: true });
     expect(await savePosition({ account: "cmb", symbol: "016452", shares: 100, cost: 200, unitCost: 3, status: "settled" })).toMatchObject({ ok: false });
     expect(db.prepare("SELECT account, shares, cost FROM positions ORDER BY id").all()).toEqual([
-      { account: "gf_direct", shares: 33.3333, cost: 100 }, { account: "alipay", shares: 100, cost: 200 },
+      { account: "gf_direct", shares: 33.33333333, cost: 100 }, { account: "alipay", shares: 100, cost: 200 },
     ]);
   });
 
@@ -69,21 +69,32 @@ describe("动态仓资产类型", () => {
     expect(db.prepare("SELECT count(*) AS n FROM positions").get()).toEqual({ n: 2 });
   });
 
-  it("定投在途记录也构成同平台同基金的已有持仓", async () => {
+  it("手工待确认申购仍提示先处理原记录", async () => {
     const { addPendingSubscription, savePosition } = await import("@/server/ledger/actions");
     expect(await addPendingSubscription({ symbol: "016452", account: "alipay", executionOn: "2026-10-10", cutoffPeriod: "before_15", cashDebited: 10, feeAmount: 0 })).toEqual({ ok: true });
     expect(await savePosition({ symbol: "016452", account: "alipay", shares: 5, cost: 10, status: "settled" })).toMatchObject({ ok: false, error: expect.stringContaining("已有此基金的待确认申购") });
     expect(await savePosition({ symbol: "016452", account: "jd", shares: 5, cost: 10, status: "settled" })).toEqual({ ok: true });
   });
 
-  it("已有定投持仓时提示到定投执行记录调整", async () => {
+  it("已有定投在途和已确认记录仍可新增独立持仓，定投记录不能被直接改写", async () => {
     const { upsertDcaPlan, recordPlanExecution } = await import("@/server/dca");
-    const { savePosition } = await import("@/server/ledger/actions");
+    const { savePosition, deletePosition } = await import("@/server/ledger/actions");
+    const { getDb } = await import("@/server/db");
     const plan = upsertDcaPlan({ symbol: "016452", shareClass: "A", channelKind: "agency", account: "alipay", amount: 10, frequency: "weekly", weekday: 3, startDate: "2026-10-01" });
     if (!plan.ok) throw new Error(plan.error);
     expect(recordPlanExecution(plan.id, { status: "bought_before_cutoff", executionDate: "2026-10-07" }).ok).toBe(true);
-    expect(await savePosition({ symbol: "016452", account: "alipay", shares: 10, cost: 20, status: "settled" }))
-      .toEqual({ ok: false, error: "该购买平台已有此基金的定投持仓，请在定投管理的执行记录中调整" });
+    expect(recordPlanExecution(plan.id, { status: "bought_before_cutoff", executionDate: "2026-10-14" }).ok).toBe(true);
+    const db = getDb();
+    const rows = db.prepare("SELECT id FROM positions WHERE dca_plan_id=? ORDER BY id").all(plan.id) as { id: number }[];
+    db.prepare("UPDATE positions SET status='settled',shares=5 WHERE id=?").run(rows[0].id);
+    const before = db.prepare("SELECT * FROM positions WHERE dca_plan_id=? ORDER BY id").all(plan.id);
+    const input = { symbol: "016452", account: "alipay" as const, shares: 10, cost: 20, status: "settled" as const };
+    expect(await savePosition(input)).toEqual({ ok: true });
+    expect(await savePosition(input)).toMatchObject({ ok: false, error: expect.stringContaining("已有此基金的持仓") });
+    expect(await savePosition({ ...input, id: rows[0].id })).toMatchObject({ ok: false });
+    expect(await deletePosition(rows[0].id)).toMatchObject({ ok: false });
+    expect(db.prepare("SELECT * FROM positions WHERE dca_plan_id=? ORDER BY id").all(plan.id)).toEqual(before);
+    expect(db.prepare("SELECT sum(shares) AS shares FROM positions WHERE status='settled' AND symbol='016452'").get()).toEqual({ shares: 15 });
   });
 
   it("空仓不启用任何类型；点选纳指后出现该区且无持仓大数", async () => {

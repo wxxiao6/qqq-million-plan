@@ -1,3 +1,4 @@
+import { roundMoney as decimalRoundMoney } from "./decimal";
 /** 纳指雷达公式。口径见 docs/spec-quota.md 第 3 节。 */
 
 import { MIN_ORDER_DEFAULT } from "./formulas";
@@ -16,7 +17,7 @@ export type QuotaResultLabel = "有可买额度" | "今日无可买额度" | "�
 export type QuotaDataStatus = "已更新" | "更新中" | "部分更新" | "更新失败" | "非今日数据";
 
 export function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
+  return decimalRoundMoney(value);
 }
 
 export function defaultQuotaScope(

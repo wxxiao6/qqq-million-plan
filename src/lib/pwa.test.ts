@@ -8,7 +8,7 @@ function worker() {
   const cache = { addAll: vi.fn().mockResolvedValue(undefined) };
   const caches = {
     open: vi.fn().mockResolvedValue(cache), match: vi.fn().mockResolvedValue(new Response("offline")),
-    keys: vi.fn().mockResolvedValue(["million-plan-pwa-old", "another-app", "million-plan-pwa-v1"]),
+    keys: vi.fn().mockResolvedValue(["million-plan-pwa-old", "another-app", "million-plan-pwa-v1", "million-plan-pwa-v2"]),
     delete: vi.fn().mockResolvedValue(true),
   };
   const fetch = vi.fn().mockResolvedValue(new Response("live"));
@@ -38,7 +38,7 @@ describe("PWA boundaries", () => {
     const waitUntil = vi.fn();
     w.listeners.install({ waitUntil });
     await waitUntil.mock.calls[0][0];
-    expect(w.cache.addAll.mock.calls[0][0]).toEqual(["/offline.html", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/maskable-512.png", "/icons/apple-touch-icon.png"]);
+    expect(w.cache.addAll.mock.calls[0][0]).toEqual(["/offline.html", "/brand/nasdaq-mark.svg", "/favicon.ico", "/icons/nasdaq-16.png", "/icons/nasdaq-32.png", "/icons/nasdaq-192.png", "/icons/nasdaq-512.png", "/icons/nasdaq-maskable-512.png", "/icons/nasdaq-apple-touch.png"]);
     expect(w.self.skipWaiting).not.toHaveBeenCalled();
   });
 
@@ -48,7 +48,7 @@ describe("PWA boundaries", () => {
       ["/api/auth/login", { method: "POST" }], ["/api/holdings", {}],
       ["/api/health", { mode: "navigate" }], ["/holdings/manage?_rsc=abc", {}],
       ["/holdings/manage", { method: "POST" }], ["/_next/static/chunk.js", {}],
-      ["/icons/icon-192.png?private=1", {}], ["/external", { url: "https://other.com/" }],
+      ["/icons/nasdaq-192.png?private=1", {}], ["/external", { url: "https://other.com/" }],
     ] as const) expect(w.request(path, options)).not.toHaveBeenCalled();
     expect(w.caches.match).not.toHaveBeenCalled();
   });
@@ -77,7 +77,7 @@ describe("PWA boundaries", () => {
     const waitUntil = vi.fn();
     w.listeners.activate({ waitUntil });
     await waitUntil.mock.calls[0][0];
-    expect(w.caches.delete.mock.calls).toEqual([["million-plan-pwa-old"]]);
+    expect(w.caches.delete.mock.calls).toEqual([["million-plan-pwa-old"], ["million-plan-pwa-v1"]]);
     expect(w.self.clients.claim).toHaveBeenCalledOnce();
     w.listeners.message({ data: { type: "OTHER" } });
     expect(w.self.skipWaiting).not.toHaveBeenCalled();

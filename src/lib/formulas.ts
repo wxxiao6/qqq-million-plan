@@ -1,4 +1,5 @@
 /** P0 公式。口径见 docs/spec-p0.md 第 6 节，语义不得改。 */
+import { decimal, roundDecimal } from "./decimal";
 
 export const MIN_ORDER_DEFAULT = 10;
 
@@ -30,7 +31,7 @@ export function buyableLimitScore(
 }
 
 export function roundShares(value: number): number {
-  return Math.round(value * 100) / 100;
+  return roundDecimal(value, 2);
 }
 
 export function lotMarketValue(
@@ -40,7 +41,7 @@ export function lotMarketValue(
   if (shares == null || !Number.isFinite(shares) || nav == null || !Number.isFinite(nav)) {
     return null;
   }
-  return shares * nav;
+  return decimal(shares).times(nav).toNumber();
 }
 
 /** 缺净值的笔不计入合计，也不当 0。全部缺净值则合计为空。 */
@@ -53,7 +54,7 @@ export function sumMarketValue(
     const mv = lotMarketValue(lot.shares, lot.nav);
     if (mv == null) continue;
     any = true;
-    sum += mv;
+    sum = decimal(sum).plus(mv).toNumber();
   }
   return any ? sum : null;
 }
@@ -63,7 +64,7 @@ export function holdingGain(
   settledCost: number,
 ): number | null {
   if (marketValue == null) return null;
-  return marketValue - settledCost;
+  return decimal(marketValue).minus(settledCost).toNumber();
 }
 
 export function todayEstimate(
@@ -71,7 +72,7 @@ export function todayEstimate(
   priorMv: number | null,
 ): number | null {
   if (todayMv == null || priorMv == null) return null;
-  return todayMv - priorMv;
+  return decimal(todayMv).minus(priorMv).toNumber();
 }
 
 /** 单笔当日：份额 ×（最近净值 − 上一净值日净值）。缺任一则空。 */
@@ -80,7 +81,8 @@ export function lotDayPnl(
   nav: number | null | undefined,
   priorNav: number | null | undefined,
 ): number | null {
-  return todayEstimate(lotMarketValue(shares, nav), lotMarketValue(shares, priorNav));
+  if (shares == null || nav == null || priorNav == null || ![shares, nav, priorNav].every(Number.isFinite)) return null;
+  return decimal(shares).times(decimal(nav).minus(priorNav)).toNumber();
 }
 
 /** 有数的项相加；全部缺失则空，不当 0。 */
@@ -92,7 +94,7 @@ export function sumNullable(
   for (const value of values) {
     if (value == null || !Number.isFinite(value)) continue;
     any = true;
-    sum += value;
+    sum = decimal(sum).plus(value).toNumber();
   }
   return any ? sum : null;
 }

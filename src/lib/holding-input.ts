@@ -1,3 +1,5 @@
+import { decimal, roundMoney } from "./decimal";
+
 export type HoldingNumbers = { shares?: number | null; cost?: number | null; unitCost?: number | null };
 
 /** Resolve any two values. A missing value is distinct from an explicit zero. */
@@ -13,15 +15,14 @@ export function resolveHoldingNumbers(input: HoldingNumbers):
   if (shares != null && shares <= 0) return { ok: false, error: "持有份额必须大于 0" };
   if (shares == null && (unitCost === 0 || cost === 0)) return { ok: false, error: "无法计算有效份额，请填写持有份额" };
   if (shares != null && cost != null && unitCost != null &&
-      Math.abs(cost - shares * unitCost) > 0.01 + shares * 0.00005) {
+      decimal(cost).minus(decimal(shares).times(unitCost)).abs().gt(decimal(shares).times("0.00005").plus("0.01"))) {
     return { ok: false, error: "三项数据不一致：持仓总成本应等于持有份额 × 持仓单价，请核对" };
   }
-  const resolvedShares = shares ?? cost! / unitCost!;
-  const resolvedCost = cost ?? resolvedShares * unitCost!;
-  const roundedShares = Math.round(resolvedShares * 10000) / 10000;
-  const roundedCost = Math.round(resolvedCost * 10000) / 10000;
+  // Never replace platform-confirmed shares with a value reconstructed from a rounded price.
+  const roundedShares = shares ?? decimal(cost!).div(unitCost!).toDecimalPlaces(8).toNumber();
+  const roundedCost = roundMoney(cost ?? decimal(roundedShares).times(unitCost!));
   if (!Number.isFinite(roundedShares) || roundedShares <= 0 || !Number.isFinite(roundedCost)) {
     return { ok: false, error: "计算结果超出有效范围，请核对输入" };
   }
-  return { ok: true, shares: roundedShares, cost: roundedCost, unitCost: roundedCost / roundedShares };
+  return { ok: true, shares: roundedShares, cost: roundedCost, unitCost: decimal(roundedCost).div(roundedShares).toNumber() };
 }

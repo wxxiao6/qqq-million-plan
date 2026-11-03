@@ -17,6 +17,24 @@ it("本月已确认按申购月份统计，待确认跨月累计，失败撤单�
 });
 
 describe("定投管理今日安排", () => {
+  it("大成公司筛选合并两地直销中心的计划、执行记录与金额统计", () => {
+    const plans = [
+      { ...plan(1, "2026-11-04"), symbol: "000834", channelKind: "direct" as const },
+      { ...plan(2, "2026-11-04"), symbol: "008971", channelKind: "direct" as const },
+      { ...plan(3, "2026-11-04"), symbol: "016452", channelKind: "direct" as const },
+    ];
+    const records = [
+      { planId: 1, executionOn: "2026-11-02", recordedOn: "2026-11-02", cashDebited: 100, status: "settled" },
+      { planId: 2, executionOn: "2026-11-03", recordedOn: "2026-11-03", cashDebited: 200, status: "pending" },
+      { planId: 3, executionOn: "2026-11-03", recordedOn: "2026-11-03", cashDebited: 300, status: "pending" },
+    ];
+    const managers = { "000834": "大成基金上海投资理财中心", "008971": "大成基金深圳投资理财中心", "016452": "南方基金" };
+    const selected = filterDcaBySalesChannel(plans, records, managers, "direct", "大成基金");
+    expect(selected.plans.map((item) => item.id)).toEqual([1, 2]);
+    expect(selected.records.map((item) => item.planId)).toEqual([1, 2]);
+    expect(summarizeDcaProgress(selected.records, "2026-11-03")).toEqual({ monthlyConfirmed: 100, pendingCount: 1, pendingAmount: 200 });
+  });
+
   it("已记录执行的计划不再显示为待处理，暂停计划不计入", () => {
     const summary = summarizeDcaSchedule([
       plan(1, "2026-10-09"), plan(2, "2026-10-09"),

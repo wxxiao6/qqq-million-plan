@@ -63,6 +63,41 @@ describe("D1 positions", () => {
     expect(cloud.prepare("SELECT cost FROM positions WHERE id=?").get(row.id)).toEqual({ cost: 5 });
     cloud.close();
   });
+
+  it("allows a separate holding alongside DCA records in both databases without altering DCA", async () => {
+    const { getDb } = await import("../db");
+    const { upsertDcaPlan, recordPlanExecution } = await import("../dca");
+    const { savePosition, deletePosition } = await import("./actions");
+    const db = getDb();
+    const plan = upsertDcaPlan({ symbol: "008971", shareClass: "C", channelKind: "direct", amount: 100, frequency: "weekly", weekday: 3, startDate: "2026-10-01" });
+    if (!plan.ok) throw new Error(plan.error);
+    expect(recordPlanExecution(plan.id, { status: "bought_before_cutoff", executionDate: "2026-10-07" }).ok).toBe(true);
+    expect(recordPlanExecution(plan.id, { status: "bought_before_cutoff", executionDate: "2026-10-14" }).ok).toBe(true);
+    const [settled] = db.prepare("SELECT id FROM positions WHERE dca_plan_id=? ORDER BY id").all(plan.id) as { id: number }[];
+    db.prepare("UPDATE positions SET status='settled',shares=20 WHERE id=?").run(settled.id);
+    const original = db.prepare("SELECT * FROM positions WHERE dca_plan_id=? ORDER BY id").all(plan.id);
+    db.pragma("journal_mode = DELETE");
+    const cloud = new Database(db.serialize());
+    try {
+      const input = { symbol: "008971", account: "gf_direct" as const, shares: 10, cost: 50, status: "settled" as const };
+      expect(await savePositionD1(binding(cloud), input)).toEqual({ ok: true });
+      expect(await savePosition(input)).toEqual({ ok: true });
+      expect(await savePositionD1(binding(cloud), input)).toEqual(await savePosition(input));
+      const row = cloud.prepare("SELECT id FROM positions WHERE symbol='008971' AND dca_plan_id IS NULL").get() as { id: number };
+      expect(await savePositionD1(binding(cloud), { ...input, id: row.id, shares: 15 })).toEqual(await savePosition({ ...input, id: row.id, shares: 15 }));
+      expect(await savePositionD1(binding(cloud), { ...input, id: settled.id })).toMatchObject({ ok: false });
+      expect(await deletePositionD1(binding(cloud), settled.id)).toMatchObject({ ok: false });
+      expect(await deletePositionD1(binding(cloud), row.id)).toEqual(await deletePosition(row.id));
+      expect(cloud.prepare("SELECT * FROM positions WHERE dca_plan_id=? ORDER BY id").all(plan.id)).toEqual(original);
+      expect(db.prepare("SELECT * FROM positions WHERE dca_plan_id=? ORDER BY id").all(plan.id)).toEqual(original);
+
+      // A DCA execution arriving after validation must not trigger the manual-holding guard.
+      const concurrent = binding(cloud, () => cloud.prepare(`INSERT INTO positions
+        (account,exposure,symbol,shares,cost,status,updated_at,dca_plan_id)
+        VALUES ('gf_direct','nasdaq','008971',NULL,100,'pending','2026-11-03',?)`).run(plan.id));
+      expect(await savePositionD1(concurrent, input)).toEqual({ ok: true });
+    } finally { cloud.close(); }
+  });
 });
 
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));

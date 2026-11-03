@@ -1,3 +1,5 @@
+import { investedTotalDeltaSql } from "@/lib/sql-money";
+import { decimal, isMoneyAmount } from "@/lib/decimal";
 import { advanceDebitDate, calculateDcaFee, dcaPostNote, deriveNextDebitDate, normalizeDcaFee, resolveDcaAccount, roundDcaMoney, validateDcaInput,
   type DcaChannelKind, type DcaFrequency, type DcaInput } from "@/lib/dca";
 import { beijingTodayISO, isISODate } from "@/lib/format";
@@ -16,6 +18,7 @@ export async function editDcaPlanD1(db: ReconcileD1, input: DcaInput & { id: num
     if (!isISODate(execution.executionDate ?? "")) return { ok: false, error: "请输入实际买入日期" };
     if (execution.actualCashDebited != null && (!Number.isFinite(execution.actualCashDebited) || execution.actualCashDebited <= 0)) return { ok: false, error: "实际扣款金额不合法" };
     if (execution.actualFeeAmount != null && (!Number.isFinite(execution.actualFeeAmount) || execution.actualFeeAmount < 0)) return { ok: false, error: "实际手续费不合法" };
+    if ((execution.actualCashDebited != null && !isMoneyAmount(execution.actualCashDebited)) || (execution.actualFeeAmount != null && !isMoneyAmount(execution.actualFeeAmount))) return { ok: false, error: "扣款金额和手续费最多保留两位小数" };
   }
   const account = resolveDcaAccount(input.channelKind as DcaChannelKind, input.account);
   if (!account.ok) return account;
@@ -61,13 +64,13 @@ export async function editDcaPlanD1(db: ReconcileD1, input: DcaInput & { id: num
     const executionDate = execution.executionDate!;
     const cash = execution.actualCashDebited ?? input.amount;
     const manualFee = calculateDcaFee(cash, fee.feeKind, fee.feeValue, execution.actualFeeAmount);
-    const cost = roundDcaMoney(cash - manualFee);
+    const cost = roundDcaMoney(decimal(cash).minus(manualFee).toNumber());
     if (cost <= 0) return { ok: false, error: "手续费不能大于等于定投金额" };
     statements.push(bind(`INSERT INTO positions (account,exposure,symbol,shares,cost,status,note,recorded_on,execution_on,updated_at,dca_plan_id,cash_debited,fee_amount,cutoff_period,order_origin)
       VALUES (?,'nasdaq',?,NULL,?,'pending',?,?,?,?,?,?,?,?,'dca')`,
     account.account, symbol, cost, dcaPostNote(executionDate), executionDate, executionDate, now, input.id, cash, manualFee,
     execution.status === "bought_before_cutoff" ? "before_15" : "after_15"));
-    statements.push(bind("UPDATE dca_plans SET invested_total=invested_total+?,next_debit_date=?,updated_at=? WHERE id=?",
+    statements.push(bind(`UPDATE dca_plans SET invested_total=${investedTotalDeltaSql()},next_debit_date=?,updated_at=? WHERE id=?`,
       cost, advanceDebitDate({ frequency, lastDue: executionDate, monthDay }), now, input.id));
   }
   try { await db.batch(statements); return { ok: true, id: input.id }; }

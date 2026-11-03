@@ -1,5 +1,7 @@
 "use client";
 
+import { formatNav } from "@/lib/format";
+
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -50,7 +52,7 @@ export function PersonalFundPicker({ id, options, initialSymbol, selectedSymbol,
       <button type="button" className="shrink-0 rounded-md px-1 py-1 text-xs text-copper underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring" onClick={() => { ++request.current; onSelect(""); onResolved(null); setFund(null); setQuery(""); setOpen(true); setActiveIndex(0); requestAnimationFrame(() => input.current?.focus()); }}>更换</button>
     </div>
     {fund ? <div className="mt-3 border-t border-copper/15 pt-2.5 text-xs leading-relaxed text-muted-foreground" aria-live="polite">
-      {fund.nav != null ? <>最新净值 <span className="font-mono text-foreground">{fund.nav.toFixed(4)}</span> 元 · {fund.navDate}</> : "净值同步中，保存后自动重试"}
+      {fund.nav != null ? <>最新净值 <span className="font-mono text-foreground">{formatNav(fund.nav)}</span> 元 · {fund.navDate}</> : "净值同步中，保存后自动重试"}
       {fund.navError && fund.nav != null ? <p className="mt-1 text-limit">暂用已公布净值，稍后自动更新。</p> : null}
     </div> : null}
   </div>;

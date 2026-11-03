@@ -15,7 +15,7 @@ export function AppNav({ user }: { user: { email: string } | null }) {
     <header className="app-shell sticky top-0 z-20 border-b border-border/80 bg-background/85 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-5 py-3.5 sm:gap-5 sm:px-8 lg:px-10">
         <Link href="/quota" className="brand shrink-0 no-underline">
-          <span className="brand-mark" aria-hidden="true">¥</span>
+          <span className="brand-mark" aria-hidden="true" />
           <span>百万纳指计划</span>
         </Link>
         <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-3">

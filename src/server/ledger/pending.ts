@@ -1,3 +1,5 @@
+import { investedTotalDeltaSql } from "@/lib/sql-money";
+import { decimal, isMoneyAmount } from "@/lib/decimal";
 import { isISODate } from "@/lib/format";
 import { advanceDebitDate, roundDcaMoney, type DcaFrequency } from "@/lib/dca";
 import { getDb } from "../db";
@@ -22,6 +24,7 @@ export function createPendingSubscription(input: PendingInput): PendingResult {
   if (input.cutoffPeriod !== "before_15" && input.cutoffPeriod !== "after_15") return { ok: false, error: "请选择 15:00 前或后" };
   if (!Number.isFinite(input.cashDebited) || input.cashDebited <= 0) return { ok: false, error: "实际扣款金额必须大于 0" };
   if (!Number.isFinite(input.feeAmount) || input.feeAmount < 0 || input.feeAmount >= input.cashDebited) return { ok: false, error: "手续费须小于扣款金额" };
+  if (!isMoneyAmount(input.cashDebited) || !isMoneyAmount(input.feeAmount)) return { ok: false, error: "扣款金额和手续费最多保留两位小数" };
   const symbol = input.symbol.trim();
   if (!symbol) return { ok: false, error: "请选择基金" };
   const fund = db.prepare("SELECT is_nasdaq FROM funds WHERE code = ? AND currency = 'CNY' AND venue = 'otc'").get(symbol) as { is_nasdaq: number } | undefined;
@@ -39,7 +42,7 @@ export function createPendingSubscription(input: PendingInput): PendingResult {
         if (duplicate) throw new Error("本期扣款已有待确认或持仓记录");
       }
       const now = new Date().toISOString();
-      const cost = roundDcaMoney(input.cashDebited - input.feeAmount);
+      const cost = roundDcaMoney(decimal(input.cashDebited).minus(input.feeAmount).toNumber());
       const result = db.prepare(`INSERT INTO positions
         (account, exposure, symbol, shares, cost, status, note, recorded_on, execution_on,
          updated_at, dca_plan_id, cash_debited, fee_amount, cutoff_period, order_origin)
@@ -48,7 +51,7 @@ export function createPendingSubscription(input: PendingInput): PendingResult {
           input.executionOn, now, input.dcaPlanId ?? null, input.cashDebited, input.feeAmount,
           input.cutoffPeriod, input.dcaPlanId == null ? "manual" : "dca");
       if (plan && input.dcaPlanId != null) {
-        db.prepare("UPDATE dca_plans SET invested_total = invested_total + ?, next_debit_date = ?, updated_at = ? WHERE id = ?")
+        db.prepare(`UPDATE dca_plans SET invested_total = ${investedTotalDeltaSql()}, next_debit_date = ?, updated_at = ? WHERE id = ?`)
           .run(cost, advanceDebitDate({ frequency: plan.frequency, lastDue: input.executionOn, monthDay: plan.month_day }), now, input.dcaPlanId);
       }
       return Number(result.lastInsertRowid);
@@ -81,7 +84,7 @@ export function resolvePendingSubscription(input: { id: number; outcome: "settle
       const position = db.prepare("SELECT dca_plan_id, cost FROM positions WHERE id = ?").get(input.id) as { dca_plan_id: number | null; cost: number };
       db.prepare("UPDATE positions SET status = ?, closed_on = ?, updated_at = ? WHERE id = ?")
         .run(input.outcome, new Date().toISOString().slice(0, 10), new Date().toISOString(), input.id);
-      if (position.dca_plan_id != null) db.prepare("UPDATE dca_plans SET invested_total = MAX(0, invested_total - ?) WHERE id = ?")
+      if (position.dca_plan_id != null) db.prepare(`UPDATE dca_plans SET invested_total = MAX(0, ${investedTotalDeltaSql("subtract")}) WHERE id = ?`)
         .run(position.cost, position.dca_plan_id);
     })();
   }

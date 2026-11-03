@@ -1,3 +1,4 @@
+import { canAutoEstimateFundShares, estimateFundShares } from "@/lib/decimal";
 import { advanceDebitDate, calculateDcaFee, deriveNextDebitDate, type DcaFrequency, type DcaFeeKind } from '@/lib/dca';
 import { beijingTodayISO, isISODate } from '@/lib/format';
 import { getDb } from '../db';
@@ -73,8 +74,8 @@ export function updateAutoPendingEstimates(symbol: string, today = beijingTodayI
   for (const row of rows) {
     const nav = row.t_date && row.t_nav ? history.find((item) => item.asOf === row.t_date) ?? { asOf: row.t_date, nav: row.t_nav } : row.execution_on < history[history.length - 1].asOf ? undefined : [...history].reverse().find((item) =>
       row.cutoff_period === 'after_15' ? item.asOf > row.execution_on : item.asOf >= row.execution_on);
-    if (!nav || !Number.isFinite(nav.nav) || nav.nav <= 0) continue;
-    const shares = Math.round((row.cost / nav.nav + Number.EPSILON) * 100) / 100;
+    if (!nav || !canAutoEstimateFundShares(row.cost, nav.nav)) continue;
+    const shares = estimateFundShares(row.cost, nav.nav);
     db.prepare(`UPDATE positions SET shares=?, t_nav=?, t_date=?, status='settled',
       recorded_on=?, confirmed_on=?, updated_at=? WHERE id=?`)
       .run(shares, nav.nav, nav.asOf, nav.asOf, today, new Date().toISOString(), row.id);

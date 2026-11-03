@@ -1,3 +1,4 @@
+import { sumMoney, roundMoney, decimal } from "./decimal";
 import { advanceDebitDate, type DcaPlanView } from "./dca";
 import { filterBySalesChannel, type SalesChannelFilter } from "./sales-channel-filter";
 
@@ -6,9 +7,8 @@ type Execution = { planId: number; executionOn: string | null; recordedOn: strin
 /** Pending includes earlier months and paused/ended plans; failed/cancelled never count as assets. */
 export function summarizeDcaProgress(records: Array<{ status: string; executionOn: string | null; recordedOn: string | null; cashDebited: number }>, today: string) {
   const pending = records.filter((record) => record.status === "pending");
-  const monthlyConfirmed = records.filter((record) => record.status === "settled" && (record.executionOn ?? record.recordedOn)?.startsWith(today.slice(0, 7)))
-    .reduce((sum, record) => sum + record.cashDebited, 0);
-  return { monthlyConfirmed, pendingCount: pending.length, pendingAmount: pending.reduce((sum, record) => sum + record.cashDebited, 0) };
+  const monthlyConfirmed = sumMoney(records.filter((record) => record.status === "settled" && (record.executionOn ?? record.recordedOn)?.startsWith(today.slice(0, 7))).map((record) => record.cashDebited));
+  return { monthlyConfirmed, pendingCount: pending.length, pendingAmount: sumMoney(pending.map((record) => record.cashDebited)) };
 }
 
 export function filterDcaBySalesChannel<T extends { planId: number }>(
@@ -40,10 +40,10 @@ export function summarizeDcaSchedule(plans: DcaPlanView[], executions: Execution
     due,
     overdue,
     pending,
-    pendingAmount: pending.reduce((sum, plan) => sum + plan.amount, 0),
+    pendingAmount: sumMoney(pending.map((plan) => plan.amount)),
     completed,
     next,
-    dueAmount: due.reduce((sum, plan) => sum + plan.amount, 0),
+    dueAmount: sumMoney(due.map((plan) => plan.amount)),
   };
 }
 
@@ -77,18 +77,18 @@ export function summarizeDcaAmounts(
   let total = 0;
   for (const record of valid) {
     const date = record.executionOn ?? record.recordedOn;
-    total += record.cashDebited;
-    if (date?.startsWith(month)) monthly += record.cashDebited;
-    if (date === today) daily += record.cashDebited;
+    total = decimal(total).plus(record.cashDebited).toNumber();
+    if (date?.startsWith(month)) monthly = decimal(monthly).plus(record.cashDebited).toNumber();
+    if (date === today) daily = decimal(daily).plus(record.cashDebited).toNumber();
   }
   for (const plan of plans) {
     const recordedDates = valid.filter((record) => record.planId === plan.id)
       .map((record) => record.executionOn ?? record.recordedOn)
       .filter((date): date is string => Boolean(date));
     for (const date of plannedDcaDates(plan, month, recordedDates)) {
-      monthly += plan.amount;
-      if (date === today) daily += plan.amount;
+      monthly = decimal(monthly).plus(plan.amount).toNumber();
+      if (date === today) daily = decimal(daily).plus(plan.amount).toNumber();
     }
   }
-  return { daily, monthly, total };
+  return { daily: roundMoney(daily), monthly: roundMoney(monthly), total: roundMoney(total) };
 }

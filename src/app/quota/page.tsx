@@ -1,3 +1,4 @@
+import { formatNav, formatPercent } from "@/lib/format";
 import { fundDatabase } from "@/server/funds/database";
 import { readQuotaDailyStatus } from "@/server/jobs/quota-status";
 import { RefreshMarketButton } from "@/components/quota/refresh-market";
@@ -86,11 +87,11 @@ function amount(row: CatalogRow, channel: Channel) {
 function fee(row: CatalogRow, channel: Channel) {
   if (channel === "exchange") return "以券商为准";
   const value = channel === "direct" ? row.directPurchaseFeePct : row.agencyPurchaseFeePct;
-  return value == null ? "—" : `${value.toFixed(2)}%`;
+  return value == null ? "—" : formatPercent(value);
 }
 
 function percent(value: number | null) {
-  return value == null ? "—" : `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
+  return value == null ? "—" : formatPercent(value, true);
 }
 
 function QuotaTotals({ rows }: { rows: CatalogRow[] }) {
@@ -183,11 +184,11 @@ function FundTable({ rows, channel, sort, queryChannel, queryUsdChannel, type, t
           {noticeEvidence ? <EvidenceDialog kind="notice" fundName={row.name} code={row.code} sourceUrl={noticeEvidence} /> : null}
           {quotaObservedAt ? <time dateTime={quotaObservedAt} className="mt-1 block text-xs text-muted-foreground">核验于 {quotaTime(quotaObservedAt)}</time> : null}
         </TableCell> : null}
-        <TableCell className="font-mono tabular-nums">{row.nav == null ? "—" : row.nav.toFixed(4)}</TableCell>
+        <TableCell className="font-mono tabular-nums">{row.nav == null ? "—" : formatNav(row.nav)}</TableCell>
         <TableCell className={`font-mono tabular-nums ${row.dailyChangePct == null ? "" : row.dailyChangePct < 0 ? "text-loss" : "text-gain"}`}>
           {percent(row.dailyChangePct)}
         </TableCell>
-        <TableCell className="font-mono tabular-nums">{row.trackingErrorPct == null ? "—" : `${row.trackingErrorPct.toFixed(2)}%`}</TableCell>
+        <TableCell className="font-mono tabular-nums">{row.trackingErrorPct == null ? "—" : formatPercent(row.trackingErrorPct)}</TableCell>
         <TableCell className="font-mono tabular-nums">{fee(row, channel)}</TableCell>
         <TableCell className="font-mono text-xs tabular-nums text-muted-foreground">{row.navDate ?? "—"}</TableCell>
       </TableRow>;

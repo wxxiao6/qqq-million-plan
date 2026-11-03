@@ -78,7 +78,7 @@ export async function saveNasdaqHolding(input: {
     exposure: "nasdaq",
     symbol: found.symbol,
     shares: input.shares,
-    cost: input.shares * input.unitCost,
+    unitCost: input.unitCost,
     status: "settled",
   });
   if (!saved.ok) return saved;

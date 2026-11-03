@@ -1,5 +1,8 @@
 "use client";
 
+import { formatMoney } from "@/lib/format";
+import { sumMoney } from "@/lib/decimal";
+
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList } from "lucide-react";
@@ -15,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { filterDcaBySalesChannel, plannedDcaDates, summarizeDcaAmounts, summarizeDcaSchedule, summarizeDcaProgress } from "@/lib/dca-dashboard";
 import { SalesChannelFilters } from "@/components/sales-channel-filter";
-import { UNKNOWN_SALES_DETAIL, type SalesChannelFilter } from "@/lib/sales-channel-filter";
+import { normalizeManager, UNKNOWN_SALES_DETAIL, type SalesChannelFilter } from "@/lib/sales-channel-filter";
 import { dcaChannelWarningLabel, type DcaPlanView, type DcaShareCandidate } from "@/lib/dca";
 import type { DcaFeeDetail } from "@/server/dca";
 
@@ -31,13 +34,13 @@ export function DcaDashboard({ plans, candidates, emptyUniverse, records, manage
   const schedule = summarizeDcaSchedule(accountPlans, successfulRecords, today);
   const amounts = summarizeDcaAmounts(accountPlans, accountRecords, today);
   const progress = summarizeDcaProgress(accountRecords, today);
-  const fees = successfulRecords.reduce((sum, record) => sum + record.feeAmount, 0);
+  const fees = sumMoney(successfulRecords.map((record) => record.feeAmount));
   const filtered = accountPlans.filter((plan) => plan.status === status)
     .sort((a, b) => (a.nextDebitDate ?? "9999").localeCompare(b.nextDebitDate ?? "9999") || a.id - b.id);
   const nearest = schedule.next[0] ?? schedule.pending[0];
   const counts = { active: schedule.active.length, paused: accountPlans.filter((plan) => plan.status === "paused").length, ended: accountPlans.filter((plan) => plan.status === "ended").length };
   const rowRecords = (plan: DcaPlanView) => accountRecords.filter((record) => record.planId === plan.id);
-  const platform = (plan: DcaPlanView) => plan.channelKind === "direct" ? managers[plan.symbol] ?? "基金公司待核实" : plan.account ? dcaAccountLabel(plan.account) : "平台待核实";
+  const platform = (plan: DcaPlanView) => plan.channelKind === "direct" ? normalizeManager(managers[plan.symbol] ?? "") || "基金公司待核实" : plan.account ? dcaAccountLabel(plan.account) : "平台待核实";
   const actions = (plan: DcaPlanView) => <div className="flex flex-wrap items-center justify-end gap-1"><PlanDetail plan={plan} candidates={candidates} emptyUniverse={emptyUniverse} records={rowRecords(plan)} today={today} managers={managers} />{plan.status !== "ended" ? <><DcaPlanForm candidates={candidates} emptyUniverse={emptyUniverse} initial={plan} managers={managers} existingPlans={plans} triggerLabel="调整计划" /><DcaStatusButton id={plan.id} status={plan.status} /></> : null}</div>;
 
   return <div className="page-stack">
@@ -79,7 +82,7 @@ function PlanDetail({ plan, candidates, emptyUniverse, records, today, managers 
   return <Dialog><DialogTrigger asChild><Button variant="ghost" size="sm" className="text-copper">详情 →</Button></DialogTrigger>
     <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-2xl"><DialogHeader className="border-b border-border px-6 py-5 text-left"><p className="text-xs font-semibold tracking-[.16em] text-copper">定投计划</p><DialogTitle className="pr-6 text-xl">{plan.name ?? plan.symbol}</DialogTitle><p className="font-mono text-xs text-muted-foreground">{plan.symbol} · {plan.shareClass} 类 · {dcaStatusLabel(plan.status)}</p></DialogHeader>
       <div className="space-y-6 overflow-y-auto px-6 py-5"><div className="grid grid-cols-2 gap-5 sm:grid-cols-4"><DetailMetric label="每期投入" value={<Money value={plan.amount} />} /><DetailMetric label="投入频率" value={plan.frequencyLabel} /><DetailMetric label="下次计划日" value={plan.status === "active" ? plan.nextDebitDate ?? "—" : "—"} /><DetailMetric label="累计记账金额" value={<Money value={records.filter((record) => record.status === "pending" || record.status === "settled").reduce((sum, record) => sum + record.cashDebited, 0)} />} /></div>
-        <div className="rounded-xl bg-muted/50 px-4 py-3 text-xs leading-6 text-muted-foreground"><p>渠道 / 基金公司或平台：{channelLabel(plan.channelKind)} / {plan.channelKind === "direct" ? managers[plan.symbol] ?? "基金公司待核实" : plan.account ? dcaAccountLabel(plan.account) : "—"}　 ·　起始日：{plan.startDate}</p><p>手续费：{plan.feeKind === "rate" ? `${plan.feeValue}%` : plan.feeKind === "fixed" ? `每次 ¥${plan.feeValue}` : "未设置"}{plan.note ? `　 ·　备注：${plan.note}` : ""}</p>{plan.status === "active" && dcaChannelWarningLabel(plan.channelWarning) ? <p className="text-loss">{dcaChannelWarningLabel(plan.channelWarning)}</p> : null}{plan.status === "active" && plan.nextDebitDate && plan.nextDebitDate < today ? <p className="text-copper">该期自动记账尚未完成，请检查页面提示。</p> : null}</div>
+        <div className="rounded-xl bg-muted/50 px-4 py-3 text-xs leading-6 text-muted-foreground"><p>渠道 / 基金公司或平台：{channelLabel(plan.channelKind)} / {plan.channelKind === "direct" ? normalizeManager(managers[plan.symbol] ?? "") || "基金公司待核实" : plan.account ? dcaAccountLabel(plan.account) : "—"}　 ·　起始日：{plan.startDate}</p><p>手续费：{plan.feeKind === "rate" ? `${plan.feeValue}%` : plan.feeKind === "fixed" ? `每次 ¥${plan.feeValue}` : "未设置"}{plan.note ? `　 ·　备注：${plan.note}` : ""}</p>{plan.status === "active" && dcaChannelWarningLabel(plan.channelWarning) ? <p className="text-loss">{dcaChannelWarningLabel(plan.channelWarning)}</p> : null}{plan.status === "active" && plan.nextDebitDate && plan.nextDebitDate < today ? <p className="text-copper">该期自动记账尚未完成，请检查页面提示。</p> : null}</div>
         <div><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">记账记录</h3><RecordsDialog records={records} plans={[plan]} trigger={<button type="button" className="text-xs text-copper underline underline-offset-4">查看全部 {records.length} 笔 →</button>} /></div><RecordList records={records.slice(0, 5)} plans={[plan]} compact /></div>
         {plan.status !== "ended" ? <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border pt-4"><DcaPlanForm candidates={candidates} emptyUniverse={emptyUniverse} initial={plan} managers={managers} triggerLabel="编辑计划" /><DcaStatusButton id={plan.id} status={plan.status} /><EndDcaButton id={plan.id} /></div> : <p className="border-t border-border pt-4 text-xs text-muted-foreground">计划已结束，历史记录仍保留。</p>}
       </div>
@@ -91,7 +94,7 @@ function DetailMetric({ label, value }: { label: string; value: React.ReactNode 
 function RecordList({ records, plans, compact = false }: { records: DcaFeeDetail[]; plans: DcaPlanView[]; compact?: boolean }) {
   const names = new Map(plans.map((plan) => [plan.id, plan.name ?? plan.symbol]));
   if (!records.length) return <p className="rounded-xl bg-muted/40 px-4 py-5 text-sm text-muted-foreground">暂无记账记录。计划到期后会自动生成记账记录。</p>;
-  return <div className="divide-y divide-border/70">{records.map((record) => <div key={record.positionId} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="text-sm font-medium">{compact ? (record.executionOn ?? record.recordedOn ?? "日期未知") : (names.get(record.planId) ?? record.symbol)}</p><p className="mt-1 text-xs text-muted-foreground">{record.autoGenerated ? "自动记账 · " : "手动记录 · "}{compact ? `申购 ¥${record.subscriptionAmount.toFixed(2)} · 手续费 ¥${record.feeAmount.toFixed(2)}` : `${record.executionOn ?? record.recordedOn ?? "日期未知"} · ${dcaAccountLabel(record.account)} · 申购 ¥${record.subscriptionAmount.toFixed(2)} · 手续费 ¥${record.feeAmount.toFixed(2)}`}</p></div><div className="text-right"><Money value={record.cashDebited} className="text-sm" /><p className="mt-1 text-xs text-muted-foreground">{record.status === "failed" || record.status === "cancelled" ? "原申请 · " : ""}{record.status === "settled" ? "已确认" : record.status === "pending" ? "待确认" : record.status === "failed" ? "申购失败" : "已撤单"}{record.tDate ? ` · T日 ${record.tDate}` : ""}</p>{record.status === "pending" || record.status === "settled" ? <div className="mt-2 flex flex-wrap justify-end gap-2"><CorrectRecord record={record} />{record.status === "pending" ? <ResolvePendingForm id={record.positionId} executionOn={record.executionOn} cutoffPeriod={record.cutoffPeriod} /> : null}</div> : null}</div></div>)}</div>;
+  return <div className="divide-y divide-border/70">{records.map((record) => <div key={record.positionId} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="text-sm font-medium">{compact ? (record.executionOn ?? record.recordedOn ?? "日期未知") : (names.get(record.planId) ?? record.symbol)}</p><p className="mt-1 text-xs text-muted-foreground">{record.autoGenerated ? "自动记账 · " : "手动记录 · "}{compact ? `申购 ${formatMoney(record.subscriptionAmount)} · 手续费 ${formatMoney(record.feeAmount)}` : `${record.executionOn ?? record.recordedOn ?? "日期未知"} · ${dcaAccountLabel(record.account)} · 申购 ${formatMoney(record.subscriptionAmount)} · 手续费 ${formatMoney(record.feeAmount)}`}</p></div><div className="text-right"><Money value={record.cashDebited} className="text-sm" /><p className="mt-1 text-xs text-muted-foreground">{record.status === "failed" || record.status === "cancelled" ? "原申请 · " : ""}{record.status === "settled" ? "已确认" : record.status === "pending" ? "待确认" : record.status === "failed" ? "申购失败" : "已撤单"}{record.tDate ? ` · T日 ${record.tDate}` : ""}</p>{record.status === "pending" || record.status === "settled" ? <div className="mt-2 flex flex-wrap justify-end gap-2"><CorrectRecord record={record} />{record.status === "pending" ? <ResolvePendingForm id={record.positionId} executionOn={record.executionOn} cutoffPeriod={record.cutoffPeriod} /> : null}</div> : null}</div></div>)}</div>;
 }
 
 function CorrectRecord({ record }: { record: DcaFeeDetail }) {

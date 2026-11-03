@@ -2,6 +2,10 @@
 
 一个用于查看纳指基金额度、记录持仓和管理定投的工具。
 
+金额、份额、净值及汇总的计算口径见 [基金计算与小数规则](docs/calculation-precision.md)。
+
+可运行 `pnpm ledger:audit --out-dir data/backups/precision-audit` 只读检查本地账本。检查报告保存在已忽略的目录，不会修改数据库，也不读取密码或会话信息。
+
 ## 纳指雷达
 
 - 查看人民币场外基金、场内 ETF、主动管理基金和美元计价 QDII 份额。

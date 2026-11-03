@@ -2,7 +2,7 @@
 
 import { RefreshFundNav } from "./refresh-fund-nav";
 import { useId, useMemo, useState, useSyncExternalStore } from "react";
-import { ArrowUpRight, ChevronDown, Eye, EyeOff, Search } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Eye, EyeOff, RotateCcw, Search } from "lucide-react";
 import { Switch } from "radix-ui";
 import { PendingHoldingsDialog } from "./pending-holdings-dialog";
 import { DeletePositionButton, PositionForm } from "@/components/holdings/holdings-forms";
@@ -65,6 +65,15 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncEr
 
   const summary = useMemo(() => summarizeNasdaqHoldings(groups), [groups]);
   const isFiltered = channel !== "all" || query.trim().length > 0 || scope !== "all";
+  const canReset = query !== "" || scope !== "all" || channel !== "all" || detail !== "all" || sort !== "value";
+
+  function resetFilters() {
+    setQuery("");
+    setScope("all");
+    setChannel("all");
+    setDetail("all");
+    setSort("value");
+  }
 
   return <>
       <section aria-label="持仓总览" className="@container/overview overflow-hidden rounded-2xl border border-border bg-card shadow-[0_12px_36px_rgba(70,52,36,.055)]">
@@ -116,7 +125,14 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncEr
         <h2 id="holdings-list-title" className="mt-1 text-2xl font-semibold tracking-tight">基金持仓</h2>
         <p className="mt-1 text-sm text-muted-foreground">按基金汇总，展开后按销售渠道查看实际持有。</p>
       </div>
-      <p className="text-sm text-muted-foreground">显示 <span className="font-mono text-foreground">{groups.length}</span> 只基金</p>
+      <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+        <p aria-live="polite" aria-atomic="true" className="text-sm text-muted-foreground">显示 <span className="font-mono text-foreground">{groups.length}</span> 只基金</p>
+        <button type="button" onClick={resetFilters} disabled={!canReset}
+          title="清空搜索，恢复全部基金、全部渠道和金额排序"
+          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground">
+          <RotateCcw className="size-3.5" aria-hidden="true" />恢复默认
+        </button>
+      </div>
     </div>
 
     <div role="search" aria-label="持仓筛选" className="grid min-w-0 gap-3 rounded-xl border border-border bg-card/75 p-3">
@@ -139,7 +155,7 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncEr
     </div> : <div className="rounded-2xl border border-dashed border-border bg-card/60 px-6 py-14 text-center">
       <p className="text-base font-medium">{positions.length ? "没有符合条件的持仓" : "还没有基金持仓"}</p>
       <p className="mt-1 text-sm text-muted-foreground">{positions.length ? "试试其他基金代码或渠道。" : "点击页面右上角的“新增持仓”开始记录。"}</p>
-      {positions.length ? <button type="button" onClick={() => { setQuery(""); setScope("all"); setChannel("all"); setDetail("all"); }} className="mt-4 text-sm font-medium text-copper hover:underline">清除筛选</button> : null}
+      {positions.length ? <button type="button" onClick={resetFilters} className="mt-4 text-sm font-medium text-copper hover:underline">恢复默认</button> : null}
     </div>}
   </section>
   </>;

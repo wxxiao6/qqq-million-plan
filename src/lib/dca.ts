@@ -1,3 +1,4 @@
+import { decimal, roundMoney } from "./decimal";
 /** 纳指定投频率与校验。口径见 docs/spec-dca.md。 */
 
 import { formatMoney, isISODate, shiftISO } from "@/lib/format";
@@ -214,6 +215,7 @@ export function normalizeDcaFee(
   }
   if (!hasValue) return { ok: true, feeKind: null, feeValue: null };
   if (feeValue < 0) return { ok: false, error: "手续费不能为负" };
+  if (kind === "fixed" && decimal(feeValue).decimalPlaces() > 2) return { ok: false, error: "固定手续费最多保留两位小数" };
   return { ok: true, feeKind: kind, feeValue };
 }
 
@@ -228,9 +230,9 @@ export function calculateDcaFee(
     return roundDcaMoney(Math.max(0, Math.min(grossAmount, actualFeeAmount)));
   }
   if (feeKind === "rate" && feeValue != null && Number.isFinite(feeValue)) {
-    const rate = Math.max(0, feeValue) / 100;
-    const netAmount = grossAmount / (1 + rate);
-    return roundDcaMoney(Math.min(grossAmount, Math.max(0, grossAmount - netAmount)));
+    const rate = decimal(Math.max(0, feeValue)).div(100);
+    const netAmount = decimal(grossAmount).div(rate.plus(1));
+    return roundMoney(decimal(grossAmount).minus(netAmount));
   }
   if (feeKind === "fixed" && feeValue != null && Number.isFinite(feeValue)) {
     return roundDcaMoney(Math.min(grossAmount, Math.max(0, feeValue)));
@@ -239,7 +241,7 @@ export function calculateDcaFee(
 }
 
 export function roundDcaMoney(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return roundMoney(value);
 }
 
 /** 未填返回 null，页面写成「—」。 */
@@ -272,6 +274,7 @@ export function validateDcaInput(input: DcaInput): string | null {
   if (!Number.isFinite(input.amount) || input.amount <= 0) {
     return "金额必须大于 0";
   }
+  if (decimal(input.amount).decimalPlaces() > 2) return "定投金额最多保留两位小数";
   const fee = normalizeDcaFee(input.feeKind, input.feeValue);
   if (!fee.ok) return fee.error;
   if (roundDcaMoney(input.amount - calculateDcaFee(input.amount, fee.feeKind, fee.feeValue)) <= 0) return "手续费不能大于等于定投金额";

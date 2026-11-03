@@ -13,7 +13,7 @@ describe("持仓任意两项录入", () => {
   });
   it("接受显示单价的四位小数误差，保留计算份额的小数", () => {
     expect(resolveHoldingNumbers({ shares: 300, cost: 100, unitCost: 0.3333 }).ok).toBe(true);
-    expect(resolveHoldingNumbers({ cost: 100, unitCost: 3 })).toMatchObject({ shares: 33.3333, cost: 100 });
+    expect(resolveHoldingNumbers({ cost: 100, unitCost: 3 })).toMatchObject({ shares: 33.33333333, cost: 100 });
     expect(resolveHoldingNumbers({ shares: 100, cost: 0 })).toMatchObject({ ok: true, unitCost: 0 });
   });
 });

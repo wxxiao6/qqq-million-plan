@@ -40,4 +40,22 @@ describe("渠道联动筛选", () => {
     expect(salesDetails(rows, mixedManagers, "direct")).toEqual(expect.arrayContaining(["华夏基金", "华泰柏瑞基金", UNKNOWN_SALES_DETAIL]));
     expect(filterBySalesChannel(rows, mixedManagers, "direct", UNKNOWN_SALES_DETAIL).map((row) => row.id)).toEqual([5]);
   });
+
+  it("大成上海、深圳直销中心与公司名称合并，旧名称筛选也覆盖所有份额", () => {
+    const mixedManagers = {
+      "001": "大成基金上海投资理财中心",
+      "002": " 大成基金深圳投资理财中心 ",
+      "003": "大成基金管理有限公司",
+      "004": "大成基金",
+      "005": "南方基金",
+    };
+    const directRows = Object.keys(mixedManagers).map((symbol) => ({ symbol, account: null, channelKind: "direct" as const }));
+    expect(salesDetails(directRows, mixedManagers, "direct")).toEqual(["大成基金", "南方基金"]);
+    for (const name of ["大成基金", "大成基金上海投资理财中心", "大成基金深圳投资理财中心", "大成基金管理有限公司"]) {
+      expect(filterBySalesChannel(directRows, mixedManagers, "direct", name).map((row) => row.symbol)).toEqual(["001", "002", "003", "004"]);
+    }
+    // Agency platforms remain separate from manager aliases.
+    const agencyRows = [{ symbol: "001", account: "大成基金上海投资理财中心", channelKind: "agency" as const }];
+    expect(salesDetails(agencyRows, mixedManagers, "agency")).toEqual(["大成基金上海投资理财中心"]);
+  });
 });

@@ -1,3 +1,4 @@
+import { sumMoney } from "@/lib/decimal";
 import { assembleNasdaqFunds, CATALOG_ROWS_SQL, CATALOG_SELLERS_SQL, type CatalogRow } from "../funds/catalog";
 import { effectiveQuotaCells } from "../funds/effective-quotes";
 import { NASDAQ_HOLDING_MANAGERS_SQL } from "../ledger";
@@ -19,7 +20,7 @@ export async function readDcaDashboardD1(db: ReadD1) {
   const candidates = buildDcaCandidates(universe as UniverseRow[], effectiveQuotaCells(catalog));
   const plans = buildDcaPlans(planRows as PlanRow[], candidates, dateRows as DcaRecordedDate[]);
   const board = { plans, candidates, activeCount: plans.filter((plan) => plan.status === "active").length,
-    totalInvested: plans.reduce((sum, plan) => sum + plan.investedTotal, 0), emptyUniverse: candidates.length === 0 };
+    totalInvested: sumMoney(plans.map((plan) => plan.investedTotal)), emptyUniverse: candidates.length === 0 };
   const planIds = new Set(plans.map((plan) => plan.id));
   const records = mapDcaHistory(historyRows).filter((record) => planIds.has(record.planId));
   const managers = Object.fromEntries((managerRows as Manager[]).map((row) => [row.code, row.manager]));

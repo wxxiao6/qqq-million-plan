@@ -92,7 +92,7 @@
 
   .app-shell { box-shadow: 0 1px 0 rgba(54, 43, 33, .05); }
   .brand { display: inline-flex; align-items: center; gap: .7rem; color: var(--foreground); font-size: .92rem; font-weight: 600; letter-spacing: -.02em; }
-  .brand-mark { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: .55rem; background: var(--foreground); color: var(--card); font-family: var(--font-display); font-size: 1.15rem; transform: rotate(-2deg); }
+  .brand-mark { display: inline-block; flex-shrink: 0; width: 1.9rem; height: 1.9rem; background: url("/brand/nasdaq-mark.svg") center / contain no-repeat; }
   .account-trigger { display: inline-flex; align-items: center; gap: .65rem; min-height: 2.75rem; padding: .3rem .55rem .3rem .3rem; border: 1px solid var(--border); border-radius: 999px; background: var(--card); cursor: pointer; transition: background .2s, border-color .2s; }
   .account-trigger:hover, .account-trigger[data-state="open"] { background: var(--secondary); border-color: var(--input); }
   .account-avatar { display: inline-grid; place-items: center; width: 2rem; height: 2rem; flex-shrink: 0; border-radius: 50%; background: var(--secondary); color: var(--copper); font-size: .85rem; font-weight: 600; }

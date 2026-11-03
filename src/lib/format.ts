@@ -1,4 +1,5 @@
 /** 展示与本地自然日。金额人民币；缺失显示由调用方写成「—」。 */
+import { decimal, roundDecimal } from "./decimal";
 
 const MONEY_OPTS: Intl.NumberFormatOptions = {
   minimumFractionDigits: 2,
@@ -80,13 +81,14 @@ export function isISODate(value: string): boolean {
 }
 
 export function formatMoney(n: number, fractionDigits = 2): string {
-  return `¥${n.toLocaleString("zh-CN", {
+  return `¥${roundDecimal(n, fractionDigits).toLocaleString("zh-CN", {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   })}`;
 }
 
 export function formatSignedMoney(n: number, fractionDigits = 2): string {
+  n = roundDecimal(n, fractionDigits);
   const body = Math.abs(n).toLocaleString("zh-CN", {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
@@ -99,15 +101,21 @@ export function formatSignedMoney(n: number, fractionDigits = 2): string {
 export function formatQty(n: number): string {
   return n.toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: Math.max(2, decimal(n).decimalPlaces()),
   });
 }
 
 export function formatNav(n: number): string {
   return n.toLocaleString("zh-CN", {
     minimumFractionDigits: 4,
-    maximumFractionDigits: 4,
+    maximumFractionDigits: Math.max(4, decimal(n).decimalPlaces()),
   });
+}
+
+/** Input is percentage points, e.g. -4.9626 means -4.96%. */
+export function formatPercent(n: number, signed = false): string {
+  const rounded = roundDecimal(n, 2);
+  return `${signed && rounded > 0 ? "+" : ""}${decimal(rounded).toFixed(2)}%`;
 }
 
 export function formatLimit(n: number): string {

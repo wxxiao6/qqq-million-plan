@@ -1,5 +1,8 @@
 "use client";
 
+import { resolveHoldingNumbers } from "@/lib/holding-input";
+import { formatMoney } from "@/lib/format";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormError } from "@/components/form-error";
@@ -26,7 +29,7 @@ import {
 import type { NasdaqFundLookup } from "@/server/holdings/lookup";
 import { lookupNasdaqFund, saveNasdaqHolding } from "@/server/holdings/actions";
 
-export function NasdaqEntry({ hasSettled }: { hasSettled: boolean }) {
+export function NasdaqEntry(_props: { hasSettled: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -242,10 +245,7 @@ export function NasdaqEntry({ hasSettled }: { hasSettled: boolean }) {
 }
 
 function formatCalculatedCost(shares: string, unitCost: string) {
-  const total = Number(shares) * Number(unitCost);
-  if (!Number.isFinite(total) || !shares || !unitCost) return "—";
-  return `¥${total.toLocaleString("zh-CN", {
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 4,
-  })}`;
+  if (!shares || !unitCost) return "—";
+  const result = resolveHoldingNumbers({ shares: Number(shares), unitCost: Number(unitCost) });
+  return result.ok ? formatMoney(result.cost) : "—";
 }

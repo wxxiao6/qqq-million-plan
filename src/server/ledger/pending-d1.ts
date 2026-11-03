@@ -1,3 +1,5 @@
+import { investedTotalDeltaSql } from "@/lib/sql-money";
+import { decimal, isMoneyAmount } from "@/lib/decimal";
 import { advanceDebitDate, roundDcaMoney, type DcaFrequency } from "@/lib/dca";
 import { beijingTodayISO, isISODate } from "@/lib/format";
 import { portfolioSnapshotStatement } from "../market/nav-d1";
@@ -15,6 +17,7 @@ export async function createPendingSubscriptionD1(db: ReconcileD1, input: Pendin
   if (input.cutoffPeriod !== "before_15" && input.cutoffPeriod !== "after_15") return { ok: false, error: "请选择 15:00 前或后" };
   if (!Number.isFinite(input.cashDebited) || input.cashDebited <= 0) return { ok: false, error: "实际扣款金额必须大于 0" };
   if (!Number.isFinite(input.feeAmount) || input.feeAmount < 0 || input.feeAmount >= input.cashDebited) return { ok: false, error: "手续费须小于扣款金额" };
+  if (!isMoneyAmount(input.cashDebited) || !isMoneyAmount(input.feeAmount)) return { ok: false, error: "扣款金额和手续费最多保留两位小数" };
   const symbol = input.symbol.trim();
   if (!symbol) return { ok: false, error: "请选择基金" };
   const planId = input.dcaPlanId ?? null;
@@ -33,7 +36,7 @@ export async function createPendingSubscriptionD1(db: ReconcileD1, input: Pendin
   if (plan?.ended_at) return { ok: false, error: "已结束的计划不可记录扣款" };
   if (planId != null && duplicates.results.length) return { ok: false, error: "本期扣款已有待确认或持仓记录" };
   const now = new Date().toISOString();
-  const cost = roundDcaMoney(input.cashDebited - input.feeAmount);
+  const cost = roundDcaMoney(decimal(input.cashDebited).minus(input.feeAmount).toNumber());
   const statements = [bind(`INSERT INTO app_kv(key,value) SELECT '__pending_guard__',NULL WHERE
     NOT EXISTS (SELECT 1 FROM funds WHERE code=? AND currency='CNY' AND venue='otc' AND is_nasdaq IS ?) OR (? IS NOT NULL AND (
       NOT EXISTS (SELECT 1 FROM dca_plans WHERE id=? AND exposure=? AND symbol IS ? AND account IS ? AND frequency IS ? AND month_day IS ? AND ended_at IS NULL AND updated_at IS ?)
@@ -42,7 +45,7 @@ export async function createPendingSubscriptionD1(db: ReconcileD1, input: Pendin
   bind(`INSERT INTO positions (account,exposure,symbol,shares,cost,status,note,recorded_on,execution_on,updated_at,dca_plan_id,cash_debited,fee_amount,cutoff_period,order_origin)
     VALUES (?,?,?,NULL,?,'pending',?,?,?,?,?,?,?,?,?) RETURNING id`, input.account, exposure, symbol, cost, input.note?.trim() || null,
   input.executionOn, input.executionOn, now, planId, input.cashDebited, input.feeAmount, input.cutoffPeriod, planId == null ? "manual" : "dca")];
-  if (plan && planId != null) statements.push(bind("UPDATE dca_plans SET invested_total=invested_total+?,next_debit_date=?,updated_at=? WHERE id=?",
+  if (plan && planId != null) statements.push(bind(`UPDATE dca_plans SET invested_total=${investedTotalDeltaSql()},next_debit_date=?,updated_at=? WHERE id=?`,
     cost, advanceDebitDate({ frequency: plan.frequency, lastDue: input.executionOn, monthDay: plan.month_day }), now, planId));
   statements.push(portfolioSnapshotStatement(db, beijingTodayISO()) as D1Statement);
   try {
@@ -75,7 +78,7 @@ export async function resolvePendingSubscriptionD1(db: ReconcileD1, input: Resol
       .bind(input.shares!, executionOn!, cutoff!, input.tDate!, input.tDate!, input.confirmedOn!, now, input.id));
   } else {
     statements.push(db.prepare("UPDATE positions SET status=?,closed_on=?,updated_at=? WHERE id=?").bind(input.outcome, now.slice(0, 10), now, input.id));
-    if (row.dca_plan_id != null) statements.push(db.prepare("UPDATE dca_plans SET invested_total=MAX(0,invested_total-?) WHERE id=?").bind(row.cost, row.dca_plan_id));
+    if (row.dca_plan_id != null) statements.push(db.prepare(`UPDATE dca_plans SET invested_total=MAX(0,${investedTotalDeltaSql("subtract")}) WHERE id=?`).bind(row.cost, row.dca_plan_id));
   }
   statements.push(portfolioSnapshotStatement(db, beijingTodayISO()) as D1Statement);
   try { await db.batch(statements); return { ok: true, id: input.id }; }

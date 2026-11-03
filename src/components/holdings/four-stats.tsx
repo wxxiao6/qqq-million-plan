@@ -1,3 +1,5 @@
+import { formatPercent } from "@/lib/format";
+import { decimal } from "@/lib/decimal";
 import { Money } from "@/components/money";
 import type { ExposureSummary } from "@/server/ledger";
 
@@ -36,7 +38,7 @@ export function FourStats({
               "—"
             ) : (
               <span className={returnRate > 0 ? "text-gain" : returnRate < 0 ? "text-loss" : undefined}>
-                {`${returnRate > 0 ? "+" : ""}${(returnRate * 100).toFixed(2)}%`}
+                {formatPercent(decimal(returnRate).times(100).toNumber(), true)}
               </span>
             )}
           </p>
@@ -44,7 +46,7 @@ export function FourStats({
         <div className="holding-overview-context">
           <div>
             <dt>总成本</dt>
-            <dd><Money value={summary.cost} fractionDigits={4} /></dd>
+            <dd><Money value={summary.cost} /></dd>
           </div>
           <div>
             <dt>当日收益</dt>
@@ -68,7 +70,7 @@ export function FourStats({
       <div className="holding-exposure-context">
         <div>
           <dt>总成本</dt>
-          <dd><Money value={summary.cost} fractionDigits={4} /></dd>
+          <dd><Money value={summary.cost} /></dd>
         </div>
         <div>
           <dt>当日收益</dt>

@@ -1,3 +1,4 @@
+import { roundDecimal } from "@/lib/decimal";
 import { formatMoney, formatQty, formatSignedMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ export function Money({
   className?: string;
 }) {
   if (value == null || !Number.isFinite(value)) return <Dash />;
+  value = roundDecimal(value, fractionDigits);
   const tone =
     signed && value > 0
       ? "text-gain"

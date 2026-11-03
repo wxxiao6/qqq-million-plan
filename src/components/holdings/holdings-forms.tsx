@@ -27,7 +27,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { todayISO } from "@/lib/format";
+import { formatMoney, formatQty, todayISO } from "@/lib/format";
+import { decimal } from "@/lib/decimal";
 import { resolveHoldingNumbers } from "@/lib/holding-input";
 import { notifySaved } from "@/lib/notify";
 import {
@@ -72,7 +73,7 @@ export function PositionForm({
 }) {
   const router = useRouter();
   const initialEntryMode: EntryMode = initial && !(initial.shares && initial.shares > 0) ? "total" : "price";
-  const initialAmounts = { shares: initial?.shares?.toString() ?? "", cost: initial?.cost.toString() ?? "", unitCost: initial?.shares && initial.shares > 0 ? String(initial.cost / initial.shares) : "" };
+  const initialAmounts = { shares: initial?.shares?.toString() ?? "", cost: initial?.cost.toString() ?? "", unitCost: initial?.shares && initial.shares > 0 ? decimal(initial.cost).div(initial.shares).toString() : "" };
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -93,7 +94,9 @@ export function PositionForm({
   const [selectedSymbol, setSelectedSymbol] = useState(initial?.symbol ?? "");
   const selectedAccount = channel === "direct" ? "gf_direct" : account;
   const duplicateRows = selectedSymbol ? existingPositions.filter((position) => position.id !== initial?.id && position.symbol === selectedSymbol && position.account === selectedAccount && (position.status === "settled" || position.status === "pending")) : [];
-  const duplicate = duplicateRows.find((position) => position.status === "settled" && position.dcaPlanId == null) ?? duplicateRows.find((position) => position.dcaPlanId != null) ?? duplicateRows[0];
+  const manualRows = duplicateRows.filter((position) => position.dcaPlanId == null);
+  const duplicate = manualRows.find((position) => position.status === "settled") ?? manualRows[0];
+  const dcaRows = duplicateRows.filter((position) => position.dcaPlanId != null);
   const platformName = channel === "direct" ? selectedFund?.manager ?? fundManagers?.[selectedSymbol] ?? "基金公司" : ACCOUNT_LABELS[account as AccountKey];
   const formId = `position-${initial?.id ?? "new"}`;
 
@@ -173,7 +176,7 @@ export function PositionForm({
         <form onSubmit={onSubmit} className="flex max-h-[90dvh] min-h-0 flex-col" aria-busy={pending}>
           <DialogHeader className="shrink-0 border-b border-border px-5 py-5 pr-12 text-left sm:px-6 sm:pr-12">
             <DialogTitle>{initial ? "编辑持仓" : "新增持仓"}</DialogTitle>
-            <DialogDescription>从购买平台复制已确认持仓，填写两项数据即可。</DialogDescription>
+            <DialogDescription>{dcaRows.length ? "录入定投记录之外的已确认持仓，填写两项数据即可。" : "从购买平台复制已确认持仓，填写两项数据即可。"}</DialogDescription>
           </DialogHeader>
           <div className="min-h-0 overflow-y-auto px-5 py-5 sm:px-6">
           <fieldset disabled={pending} className="min-w-0 space-y-6">
@@ -203,9 +206,14 @@ export function PositionForm({
               </Select>
             </div> : <p className="rounded-lg bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">{selectedSymbol ? platformName : "选择基金后，自动匹配所属基金公司。"}</p>}
             {duplicate ? <div role="status" className="rounded-xl border border-copper/25 bg-copper/5 px-3 py-3 text-sm leading-relaxed">
-              <p className="font-medium">{platformName}已有这只基金的{duplicate.dcaPlanId != null ? "定投记录" : duplicate.status === "pending" ? "待确认申购" : "持仓"}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{duplicate.dcaPlanId != null ? "请在定投管理中调整执行记录，避免重复计入资产。" : duplicate.status === "pending" ? "请处理原有申购记录，无需再次新增。" : "请编辑原有持仓，更新总成本和份额。"}</p>
-              {duplicate.dcaPlanId != null ? <a href="/dca" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-copper underline underline-offset-4">前往定投管理<ArrowRight className="size-3" /></a> : <button type="button" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-copper underline underline-offset-4" onClick={() => { revealHolding.current = selectedSymbol; setOpen(false); }}>查看已有记录<ArrowRight className="size-3" /></button>}
+              <p className="font-medium">{platformName}已有这只基金的{duplicate.status === "pending" ? "待确认申购" : "持仓"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{duplicate.status === "pending" ? "请处理原有申购记录，无需再次新增。" : "请编辑原有持仓，更新总成本和份额。"}</p>
+              <button type="button" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-copper underline underline-offset-4" onClick={() => { revealHolding.current = selectedSymbol; setOpen(false); }}>查看已有记录<ArrowRight className="size-3" /></button>
+            </div> : null}
+            {!duplicate && dcaRows.length ? <div role="status" className="rounded-xl border border-border bg-muted/40 px-3 py-3 text-sm leading-relaxed">
+              <p className="font-medium">可补充定投以外的持仓</p>
+              <p className="mt-1 text-xs text-muted-foreground">该平台已有 {dcaRows.length} 笔此基金的定投记录。本次请填写未记入系统的份额和对应成本，勿重复包含已记录的定投。若平台展示总持仓，请先扣除其中已记录的定投部分。</p>
+              <a href="/dca" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-copper underline underline-offset-4">核对定投记录<ArrowRight className="size-3" /></a>
             </div> : null}
           </section>
           <section className="grid gap-3" aria-labelledby={`${formId}-amounts-title`}>
@@ -229,7 +237,7 @@ export function PositionForm({
             <div aria-live="polite" aria-atomic="true" className={`flex min-w-0 items-center justify-between gap-3 rounded-xl px-3 py-3 ${hasBothAmounts && !calculated.ok ? "bg-destructive/5" : "bg-muted/50"}`}>
               {hasBothAmounts && !calculated.ok ? <p role="alert" className="text-xs text-destructive">{calculated.error}</p> : <>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground"><Calculator className="size-4 shrink-0" aria-hidden="true" /><span>{AMOUNT_LABELS[computedKey]}<span className="mt-0.5 block text-[11px]">自动计算</span></span></div>
-                <output className="min-w-0 break-all text-right font-mono text-base font-semibold">{calculated.ok ? `${computedKey === "shares" ? "" : "¥"}${calculated[computedKey].toLocaleString("zh-CN", { minimumFractionDigits: computedKey === "unitCost" ? 4 : 2, maximumFractionDigits: 4 })}${computedKey === "shares" ? " 份" : computedKey === "unitCost" ? " / 份" : ""}` : "—"}</output>
+                <output className="min-w-0 break-all text-right font-mono text-base font-semibold">{calculated.ok ? computedKey === "shares" ? `${formatQty(calculated.shares)} 份` : computedKey === "unitCost" ? `${formatMoney(calculated.unitCost, 8)} / 份` : formatMoney(calculated.cost) : "—"}</output>
               </>}
             </div>
           </section>

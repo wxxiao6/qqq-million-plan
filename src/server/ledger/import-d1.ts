@@ -1,3 +1,4 @@
+import { roundMoney } from "@/lib/decimal";
 import { beijingTodayISO, isISODate } from "@/lib/format";
 import { portfolioSnapshotStatement } from "../market/nav-d1";
 import type { D1Statement, ReconcileD1 } from "./reconcile-d1";
@@ -10,7 +11,7 @@ export async function importPositionsCsvD1(db: ReconcileD1, csv: string): Promis
   const rows = parse(csv);
   if (!rows.length) return { ok: false, error: "CSV 为空" };
   const data = rows.slice(/account|账户/i.test(rows[0][0] ?? "") ? 1 : 0);
-  const [existing] = await db.batch([db.prepare("SELECT account,symbol,status,dca_plan_id FROM positions WHERE exposure='nasdaq' AND status IN ('pending','settled')").bind()]);
+  const [existing] = await db.batch([db.prepare("SELECT account,symbol,status,dca_plan_id FROM positions WHERE exposure IN ('nasdaq','fund') AND dca_plan_id IS NULL AND status IN ('pending','settled')").bind()]);
   const holdings = existing.results as Holding[];
   const statements: D1Statement[] = [];
   const now = new Date().toISOString(), today = beijingTodayISO();
@@ -25,14 +26,14 @@ export async function importPositionsCsvD1(db: ReconcileD1, csv: string): Promis
     if (duplicates.length) {
       const message = duplicates.some((item) => item.status === "settled" && item.dca_plan_id == null)
         ? "该购买平台已有此基金的持仓，请在持仓管理中编辑已有持仓"
-        : duplicates.some((item) => item.dca_plan_id != null) ? "该购买平台已有此基金的定投持仓，请在定投管理的执行记录中调整" : "该购买平台已有此基金的待确认申购，请在持仓管理中处理原有记录";
+        : "该购买平台已有此基金的待确认申购，请在持仓管理中处理原有记录";
       return { ok: false, error: `${symbol}：${message}` };
     }
     holdings.push({ account, symbol, status, dca_plan_id: null });
     statements.push(db.prepare(`INSERT INTO app_kv(key,value) SELECT '__csv_guard__',NULL WHERE EXISTS
-      (SELECT 1 FROM positions WHERE exposure='nasdaq' AND account=? AND symbol=? AND status IN ('pending','settled'))`).bind(account, symbol));
+      (SELECT 1 FROM positions WHERE exposure IN ('nasdaq','fund') AND account=? AND symbol=? AND dca_plan_id IS NULL AND status IN ('pending','settled'))`).bind(account, symbol));
     statements.push(db.prepare(`INSERT INTO positions (account,exposure,symbol,shares,cost,status,note,recorded_on,updated_at)
-      VALUES (?, 'nasdaq', ?, ?, ?, ?, NULL, ?, ?)`).bind(account, symbol, shares, cost, status, today, now));
+      VALUES (?, 'nasdaq', ?, ?, ?, ?, NULL, ?, ?)`).bind(account, symbol, shares, roundMoney(cost), status, today, now));
   }
   statements.push(portfolioSnapshotStatement(db, today) as D1Statement);
   try { await db.batch(statements); return { ok: true }; }

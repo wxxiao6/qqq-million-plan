@@ -1,3 +1,4 @@
+import { decimal, roundMoney, sumDecimal, sumMoney } from "@/lib/decimal";
 /** 用户资产账本。跨模块只暴露合计，不暴露渠道明细。 */
 
 import {
@@ -156,6 +157,16 @@ export function listPositions(): Position[] {
   return rows.map(mapPosition);
 }
 
+function sumAccountMarketValue(lots: Array<{ account: string; symbol: string; shares: number | null; nav: number | null }>): number | null {
+  const accounts = new Map<string, typeof lots>();
+  for (const lot of lots) {
+    const key = `${lot.symbol}:${lot.account}`;
+    accounts.set(key, [...(accounts.get(key) ?? []), lot]);
+  }
+  const values = [...accounts.values()].map((rows) => sumMarketValue(rows)).filter((value): value is number => value != null);
+  return values.length ? sumMoney(values.map(roundMoney)) : null;
+}
+
 /** 持仓管理专用的逐笔估值；持仓概览不展开这些字段。 */
 export function listPositionDetails(): PositionDetail[] {
   const navs = latestNavMap();
@@ -291,14 +302,15 @@ export function getExposureSummary(
   const navs = latestNavMap();
 
   const lots = settled.map((row) => ({
+    symbol: row.symbol,
     shares: row.shares,
     nav: navForPosition(row, navs[row.symbol]),
     cost: row.cost,
     account: row.account,
   }));
 
-  const marketValue = sumMarketValue(lots);
-  const cost = settled.reduce((sum, row) => sum + row.cost, 0);
+  const marketValue = sumAccountMarketValue(lots);
+  const cost = sumMoney(settled.map((row) => row.cost));
   const pnl = holdingGain(marketValue, cost);
 
   const byAccount = new Map<Account, ChannelRow>();
@@ -309,10 +321,10 @@ export function getExposureSummary(
       cost: 0,
       marketValue: null as number | null,
     };
-    current.shares += row.shares ?? 0;
-    current.cost += row.cost;
+    current.shares = decimal(current.shares).plus(row.shares ?? 0).toNumber();
+    current.cost = decimal(current.cost).plus(row.cost).toNumber();
     const mv = lotMarketValue(row.shares, navForPosition(row, navs[row.symbol]));
-    if (mv != null) current.marketValue = (current.marketValue ?? 0) + mv;
+    if (mv != null) current.marketValue = decimal(current.marketValue ?? 0).plus(mv).toNumber();
     byAccount.set(row.account, current);
   }
 
@@ -322,11 +334,11 @@ export function getExposureSummary(
       : {
           shares: pendingLots.every((row) => row.shares == null)
             ? null
-            : pendingLots.reduce((sum, row) => sum + (row.shares ?? 0), 0),
-          cost: pendingLots.reduce((sum, row) => sum + row.cost, 0),
+            : sumDecimal(pendingLots.map((row) => row.shares ?? 0)),
+          cost: sumMoney(pendingLots.map((row) => row.cost)),
         };
-  const investedCash = positions.filter((row) => row.status === "settled" || row.status === "pending").reduce((sum, row) => sum + row.cashDebited, 0);
-  const feeTotal = positions.filter((row) => row.status === "settled" || row.status === "pending").reduce((sum, row) => sum + row.feeAmount, 0);
+  const investedCash = sumMoney(positions.filter((row) => row.status === "settled" || row.status === "pending").map((row) => row.cashDebited));
+  const feeTotal = sumMoney(positions.filter((row) => row.status === "settled" || row.status === "pending").map((row) => row.feeAmount));
 
   const job = readJob("nav_scan");
   const navJobFailed = job != null && !job.ok;
@@ -359,15 +371,16 @@ export function getDynamicSummary(asOf?: string): ExposureSummary {
   const pendingLots = positions.filter((row) => row.status === "pending");
   const navs = latestNavMap();
   const priors = priorNavMap();
-  const marketValue = sumMarketValue(
+  const marketValue = sumAccountMarketValue(
     settled.map((row) => ({
+      account: row.account, symbol: row.symbol,
       shares: row.shares,
       nav: navForPosition(row, navs[row.symbol]),
     })),
   );
-  const cost = settled.reduce((sum, row) => sum + row.cost, 0);
-  const investedCash = positions.filter((row) => row.status === "settled" || row.status === "pending").reduce((sum, row) => sum + row.cashDebited, 0);
-  const feeTotal = positions.filter((row) => row.status === "settled" || row.status === "pending").reduce((sum, row) => sum + row.feeAmount, 0);
+  const cost = sumMoney(settled.map((row) => row.cost));
+  const investedCash = sumMoney(positions.filter((row) => row.status === "settled" || row.status === "pending").map((row) => row.cashDebited));
+  const feeTotal = sumMoney(positions.filter((row) => row.status === "settled" || row.status === "pending").map((row) => row.feeAmount));
   const job = readJob("nav_scan");
 
   return {
@@ -389,8 +402,8 @@ export function getDynamicSummary(asOf?: string): ExposureSummary {
         : {
             shares: pendingLots.every((row) => row.shares == null)
               ? null
-              : pendingLots.reduce((sum, row) => sum + (row.shares ?? 0), 0),
-            cost: pendingLots.reduce((sum, row) => sum + row.cost, 0),
+              : sumDecimal(pendingLots.map((row) => row.shares ?? 0)),
+            cost: sumMoney(pendingLots.map((row) => row.cost)),
           },
     investedCash,
     feeTotal,
@@ -464,17 +477,16 @@ function latestNavDayPnl(
   navs: Record<string, NavSnapshot>,
   priors: Record<string, number>,
 ): number | null {
-  return sumNullable(
-    positions.map((row) => {
-      const snapshot = navs[row.symbol];
-      if (!snapshot || (row.tDate && snapshot.asOf <= row.tDate)) return null;
-      return lotDayPnl(
-        row.shares,
-        snapshot?.nav ?? null,
-        verifiedPriorNav(snapshot, priors[row.symbol]),
-      );
-    }),
-  );
+  const values = new Map<string, number>();
+  for (const row of positions) {
+    const snapshot = navs[row.symbol];
+    if (!snapshot || (row.tDate && snapshot.asOf <= row.tDate)) continue;
+    const value = lotDayPnl(row.shares, snapshot.nav, verifiedPriorNav(snapshot, priors[row.symbol]));
+    if (value == null) continue;
+    const key = `${row.symbol}:${row.account}`;
+    values.set(key, decimal(values.get(key) ?? 0).plus(value).toNumber());
+  }
+  return values.size ? sumMoney([...values.values()].map(roundMoney)) : null;
 }
 
 export function listNasdaqPlatformGroups(): NasdaqPlatformGroup[] {
@@ -515,16 +527,17 @@ export function listNasdaqPlatformGroups(): NasdaqPlatformGroup[] {
     const groupLots = byAccount.get(account);
     if (!groupLots || groupLots.length === 0) return [];
     const settled = groupLots.filter((lot) => lot.status === "settled");
-    const marketValue = sumMarketValue(
+    const marketValue = sumAccountMarketValue(
       settled.map((lot) => ({
+        account: lot.account, symbol: lot.symbol,
         shares: lot.shares,
         nav: navs[lot.symbol]?.nav ?? null,
       })),
     );
-    const cost = settled.reduce((sum, lot) => sum + lot.cost, 0);
+    const cost = sumMoney(settled.map((lot) => lot.cost));
     const shares = settled.every((lot) => lot.shares == null)
       ? null
-      : settled.reduce((sum, lot) => sum + (lot.shares ?? 0), 0);
+      : sumDecimal(settled.map((lot) => lot.shares ?? 0));
     return [
       {
         account,

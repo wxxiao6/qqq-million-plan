@@ -3,8 +3,11 @@ export type SalesFilterRow = { symbol: string; account: string | null; channelKi
 export const UNKNOWN_SALES_DETAIL = "__unknown__";
 
 // Catalog entries use short names while provider identities may use legal names.
-function normalizeManager(manager: string): string {
-  return manager.trim().replace(/基金管理(?:股份有限公司|有限责任公司|有限公司)$/, "基金");
+export function normalizeManager(manager: string): string {
+  const name = manager.trim().replace(/基金管理(?:股份有限公司|有限责任公司|有限公司)$/, "基金");
+  // Provider records may identify Dacheng's direct-sales offices as the manager.
+  if (/^大成基金(?:上海|深圳)投资理财中心$/.test(name)) return "大成基金";
+  return name;
 }
 
 export function rowSalesChannel(row: SalesFilterRow): "direct" | "agency" {

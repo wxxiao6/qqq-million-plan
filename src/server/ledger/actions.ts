@@ -4,6 +4,7 @@ import { fundDatabase } from "../funds/database";
 import { attachFundNavStatement, readPersonalFund } from "../funds/personal";
 import { requireUser } from "@/server/auth/context";
 import { revalidatePath } from "next/cache";
+import { roundMoney } from "@/lib/decimal";
 import { resolveHoldingNumbers } from "@/lib/holding-input";
 import { isISODate, todayISO } from "@/lib/format";
 import { getDb } from "../db";
@@ -78,10 +79,9 @@ async function cloudWriteWithSnapshot(sql: string, values: (string | number | nu
 }
 
 function duplicateNasdaqHoldingMessage(db: ReturnType<typeof getDb>, account: string, symbol: string): string | null {
-  const rows = db.prepare("SELECT status, dca_plan_id FROM positions WHERE exposure IN ('nasdaq','fund') AND account = ? AND symbol = ? AND status IN ('pending', 'settled')").all(account, symbol) as { status: string; dca_plan_id: number | null }[];
+  const rows = db.prepare("SELECT status FROM positions WHERE exposure IN ('nasdaq','fund') AND account = ? AND symbol = ? AND dca_plan_id IS NULL AND status IN ('pending', 'settled')").all(account, symbol) as { status: string }[];
   if (!rows.length) return null;
-  if (rows.some((row) => row.status === "settled" && row.dca_plan_id == null)) return "该购买平台已有此基金的持仓，请在持仓管理中编辑已有持仓";
-  if (rows.some((row) => row.dca_plan_id != null)) return "该购买平台已有此基金的定投持仓，请在定投管理的执行记录中调整";
+  if (rows.some((row) => row.status === "settled")) return "该购买平台已有此基金的持仓，请在持仓管理中编辑已有持仓";
   return "该购买平台已有此基金的待确认申购，请在持仓管理中处理原有记录";
 }
 
@@ -253,7 +253,7 @@ export async function importPositionsCsv(csv: string): Promise<ActionResult> {
         if (!STATUSES.includes(status)) throw new Error("状态不合法");
         const duplicateMessage = duplicateNasdaqHoldingMessage(db, account, symbol);
         if (duplicateMessage) throw new Error(`${symbol}：${duplicateMessage}`);
-        insert.run(account, symbol, shares, cost, status, todayISO(), now);
+        insert.run(account, symbol, shares, roundMoney(cost), status, todayISO(), now);
       }
     });
     run.immediate();

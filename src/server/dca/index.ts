@@ -1,3 +1,5 @@
+import { investedTotalDeltaSql } from "@/lib/sql-money";
+import { decimal, estimateFundShares, isMoneyAmount, roundMoney, sumMoney } from "@/lib/decimal";
 import { importPastPlanPending, reconcileDueDcaPlan } from "../ledger/recent-pending";
 /** 纳指定投计划。借额度宇宙与渠道状态；P0 只做计划与额度预留。 */
 
@@ -26,7 +28,6 @@ import { getDb } from "../db";
 import { listEffectiveQuotaCells } from "../funds/effective-quotes";
 import { beijingTodayISO, isISODate, shiftISO, todayISO } from "@/lib/format";
 import { createPendingSubscription } from "../ledger/pending";
-import { listPositions, type Account } from "../ledger";
 
 export type { DcaBoard, DcaPlanView as DcaPlan, DcaShareCandidate };
 
@@ -37,6 +38,7 @@ function validateExecution(input: DcaExecutionInput | null | undefined): string 
   if (input.actualFeeAmount != null && (!Number.isFinite(input.actualFeeAmount) || input.actualFeeAmount < 0)) {
     return "实际手续费不合法";
   }
+  if ((input.actualCashDebited != null && !isMoneyAmount(input.actualCashDebited)) || (input.actualFeeAmount != null && !isMoneyAmount(input.actualFeeAmount))) return "扣款金额和手续费最多保留两位小数";
   return null;
 }
 
@@ -149,8 +151,8 @@ function mapPlan(row: PlanRow, candidates: DcaShareCandidate[], recordedDates: s
     channelKind: row.channel_kind,
     account: row.account,
     amount: row.amount,
-    investedTotal: row.invested_total,
-    fundInvestedTotal: row.invested_total,
+    investedTotal: roundMoney(row.invested_total),
+    fundInvestedTotal: roundMoney(row.invested_total),
     feeKind: row.fee_kind,
     feeValue: row.fee_value,
     frequency: row.frequency,
@@ -216,7 +218,7 @@ export function getDcaBoard(): DcaBoard {
     plans,
     candidates,
     activeCount: plans.filter((plan) => plan.status === "active").length,
-    totalInvested: plans.reduce((sum, plan) => sum + plan.investedTotal, 0),
+    totalInvested: sumMoney(plans.map((plan) => plan.investedTotal)),
     emptyUniverse: candidates.length === 0,
   };
 }
@@ -297,7 +299,7 @@ export function getDcaFeeTotal(): number {
        WHERE p.status IN ('pending', 'settled')`,
     )
     .get() as { total: number };
-  return row.total;
+  return roundMoney(row.total);
 }
 
 export type DcaWriteResult =
@@ -482,7 +484,7 @@ function recordDcaExecution(input: {
     input.feeValue,
     execution.actualFeeAmount,
   );
-  const subscriptionAmount = roundDcaMoney(cashDebited - feeAmount);
+  const subscriptionAmount = roundDcaMoney(decimal(cashDebited).minus(feeAmount).toNumber());
   if (subscriptionAmount <= 0) return { ok: false, error: "手续费不能大于等于定投金额" };
   return createPendingSubscription({
     symbol: input.symbol, account: input.account as "alipay" | "gf_direct" | "cmb" | "jd" | "other",
@@ -565,6 +567,7 @@ export function removeDcaPlan(id: number): DcaWriteResult {
 export function correctDcaExecution(input: { id: number; cashDebited: number; feeAmount: number; outcome: "keep" | "failed" | "cancelled" }): DcaWriteResult {
   if (!Number.isFinite(input.cashDebited) || input.cashDebited <= 0) return { ok: false, error: "记账金额必须大于 0" };
   if (!Number.isFinite(input.feeAmount) || input.feeAmount < 0 || input.feeAmount >= input.cashDebited) return { ok: false, error: "手续费须小于记账金额" };
+  if (!isMoneyAmount(input.cashDebited) || !isMoneyAmount(input.feeAmount)) return { ok: false, error: "扣款金额和手续费最多保留两位小数" };
   if (!["keep", "failed", "cancelled"].includes(input.outcome)) return { ok: false, error: "处理方式不合法" };
   const db = getDb();
   try {
@@ -574,12 +577,12 @@ export function correctDcaExecution(input: { id: number; cashDebited: number; fe
           dca_plan_id: number; status: string; cost: number; auto_generated: number; t_nav: number | null; shares: number | null;
         } | undefined;
       if (!row || (row.status !== "pending" && row.status !== "settled")) return { ok: false as const, error: "找不到可修正的定投记录" };
-      const cost = roundDcaMoney(input.cashDebited - input.feeAmount);
+      const cost = roundDcaMoney(decimal(input.cashDebited).minus(input.feeAmount).toNumber());
       const removed = input.outcome !== "keep";
-      const shares = row.auto_generated && row.t_nav && row.t_nav > 0 ? Math.round((cost / row.t_nav + Number.EPSILON) * 100) / 100 : row.shares;
+      const shares = row.auto_generated && row.t_nav && row.t_nav > 0 ? estimateFundShares(cost, row.t_nav) : row.shares;
       db.prepare(`UPDATE positions SET cash_debited=?, fee_amount=?, cost=?, shares=?, status=?, closed_on=?, updated_at=? WHERE id=?`)
         .run(input.cashDebited, input.feeAmount, cost, shares, removed ? input.outcome : row.status, removed ? beijingTodayISO() : null, new Date().toISOString(), input.id);
-      db.prepare("UPDATE dca_plans SET invested_total=MAX(0, invested_total + ?), updated_at=? WHERE id=?")
+      db.prepare(`UPDATE dca_plans SET invested_total=MAX(0, ${investedTotalDeltaSql()}), updated_at=? WHERE id=?`)
         .run(removed ? -row.cost : cost - row.cost, new Date().toISOString(), row.dca_plan_id);
       return { ok: true as const, id: input.id };
     })();

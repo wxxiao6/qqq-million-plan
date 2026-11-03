@@ -119,7 +119,7 @@ export function InstallAppButton() {
     <DialogTrigger asChild><Button variant="ghost" size="icon-lg" aria-label="添加到手机主屏幕" title="添加到主屏幕"><Smartphone aria-hidden="true" /></Button></DialogTrigger>
     <DialogContent className="max-h-[85dvh] overflow-y-auto">
       <DialogHeader>
-        <span className="brand-mark mb-3 size-12! text-2xl!" aria-hidden="true">¥</span>
+        <span className="brand-mark mb-3 size-12!" aria-hidden="true" />
         <DialogTitle>把百万纳指放进手机</DialogTitle>
         <DialogDescription className="mt-2 leading-relaxed">添加到主屏幕，像 App 一样打开。随时查看雷达、持仓和定投。</DialogDescription>
       </DialogHeader>

@@ -71,12 +71,26 @@ export async function saveNavChunkD1(db: MarketD1, records: FundNavRecord[], sou
 
 /** Missing prices are excluded, and never persisted as zero. */
 export function portfolioSnapshotStatement(db: MarketD1, bizDate: string) {
-  return db.prepare(`INSERT INTO portfolio_snapshots(as_of,dynamic_mv)
-    SELECT ?,SUM(p.shares*n.nav) FROM positions p JOIN nav_snapshots n ON n.symbol=p.symbol
+  // Split fixed-point operands into integer limbs before multiplying. A REAL
+  // ROUND(SUM(shares*nav),2) loses half-cent ties such as 1 * 1.005.
+  return db.prepare(`WITH units AS MATERIALIZED (
+    SELECT p.symbol,p.account,CAST(ROUND(p.shares*100000000,0) AS INTEGER) AS s,
+      CAST(ROUND(n.nav*100000000,0) AS INTEGER) AS n FROM positions p JOIN nav_snapshots n ON n.symbol=p.symbol
       AND n.as_of=(SELECT MAX(latest.as_of) FROM nav_snapshots latest WHERE latest.symbol=p.symbol)
     WHERE p.status='settled' AND p.exposure IN ('nasdaq','fund','gold','crypto')
       AND p.shares IS NOT NULL AND (p.t_date IS NULL OR n.as_of>=p.t_date)
-    HAVING COUNT(p.shares*n.nav)>0
+    ), limbs AS MATERIALIZED (
+      SELECT symbol,account,s/100000000 AS sh,s%100000000 AS sl,n/100000000 AS nh,n%100000000 AS nl FROM units
+    ), products AS MATERIALIZED (
+      SELECT symbol,account,sh*nh*100+(sh*nl+sl*nh)/1000000+(sl*nl)/100000000000000 AS cents,
+        ((sh*nl+sl*nh)%1000000)*100000000+(sl*nl)%100000000000000 AS tail FROM limbs
+    ), accounts AS (
+      SELECT SUM(cents)+SUM(tail)/100000000000000+
+        CASE WHEN SUM(tail)%100000000000000>=50000000000000 THEN 1 ELSE 0 END AS cents
+      FROM products GROUP BY symbol,account
+    )
+    INSERT INTO portfolio_snapshots(as_of,dynamic_mv) SELECT ?,SUM(cents)/100.0 FROM accounts
+    HAVING COUNT(cents)>0
     ON CONFLICT(as_of) DO UPDATE SET dynamic_mv=excluded.dynamic_mv`).bind(bizDate);
 }
 

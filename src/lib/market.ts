@@ -55,7 +55,7 @@ function asNav(value: unknown): number | null {
   if (value == null || value === "") return null;
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round(n * 10000) / 10000;
+  return n;
 }
 
 export function parseMarketShare(raw: Record<string, unknown>): NasdaqShareSituation | null {
