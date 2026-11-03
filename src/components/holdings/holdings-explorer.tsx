@@ -1,8 +1,9 @@
 "use client";
 
 import { RefreshFundNav } from "./refresh-fund-nav";
-import { useMemo, useState } from "react";
-import { ArrowUpRight, ChevronDown, Search } from "lucide-react";
+import { useId, useMemo, useState, useSyncExternalStore } from "react";
+import { ArrowUpRight, ChevronDown, Eye, EyeOff, Search } from "lucide-react";
+import { Switch } from "radix-ui";
 import { PendingHoldingsDialog } from "./pending-holdings-dialog";
 import { DeletePositionButton, PositionForm } from "@/components/holdings/holdings-forms";
 import { accountLabel } from "@/components/labels";
@@ -12,6 +13,37 @@ import { Money, Qty } from "@/components/money";
 import { filterHoldingPositions, fundIncomeDate, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, sortHoldingGroups, summarizeNasdaqHoldings, type HoldingChannelGroup, type HoldingGroup, type HoldingSortOrder } from "@/lib/holdings-dashboard";
 import type { PositionDetail } from "@/server/ledger";
 import { filterBySalesChannel, type SalesChannelFilter } from "@/lib/sales-channel-filter";
+
+const OVERVIEW_VISIBILITY_KEY = "holdings-overview-show-numbers";
+const OVERVIEW_VISIBILITY_EVENT = "holdings-overview-visibility-change";
+let overviewVisibilityFallback = true;
+
+function readOverviewVisibility(): boolean {
+  try { return window.localStorage.getItem(OVERVIEW_VISIBILITY_KEY) !== "hidden"; }
+  catch { return overviewVisibilityFallback; }
+}
+
+function subscribeOverviewVisibility(onChange: () => void) {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === OVERVIEW_VISIBILITY_KEY || event.key === null) onChange();
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(OVERVIEW_VISIBILITY_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(OVERVIEW_VISIBILITY_EVENT, onChange);
+  };
+}
+
+function writeOverviewVisibility(visible: boolean) {
+  overviewVisibilityFallback = visible;
+  try { window.localStorage.setItem(OVERVIEW_VISIBILITY_KEY, visible ? "visible" : "hidden"); }
+  catch { /* Keep the switch usable when browser storage is unavailable. */ }
+  window.dispatchEvent(new Event(OVERVIEW_VISIBILITY_EVENT));
+}
+
+// Mask server-rendered values until the browser's saved preference is known.
+function serverOverviewVisibility() { return false; }
 
 function incomeLabel(incomeDate: string | null): string {
   return incomeDate ? `${incomeDate} 收益` : "单日收益";
@@ -23,6 +55,8 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncEr
   const [channel, setChannel] = useState<SalesChannelFilter>("all");
   const [detail, setDetail] = useState("all");
   const [sort, setSort] = useState<HoldingSortOrder>("value");
+  const showNumbers = useSyncExternalStore(subscribeOverviewVisibility, readOverviewVisibility, serverOverviewVisibility);
+  const visibilityId = useId();
 
   const groups = useMemo(() => {
     const matching = filterBySalesChannel(filterHoldingPositions(positions.filter((position) => scope === "all" || position.exposure === scope), names, query, "all"), managers, channel, detail);
@@ -34,29 +68,42 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncEr
 
   return <>
       <section aria-label="持仓总览" className="@container/overview overflow-hidden rounded-2xl border border-border bg-card shadow-[0_12px_36px_rgba(70,52,36,.055)]">
-        <div className="grid min-w-0 gap-7 bg-foreground px-6 py-7 text-primary-foreground @min-[40rem]/overview:px-8 @min-[64rem]/overview:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-          <div className="min-w-0">
+        <div className="bg-foreground px-6 py-6 text-primary-foreground @min-[40rem]/overview:px-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs font-medium tracking-[.16em] text-primary-foreground/60">{scope === "nasdaq" ? "纳指持仓 · 筛选结果" : scope === "fund" ? "其他基金 · 筛选结果" : isFiltered ? "基金持仓 · 筛选结果" : "基金持仓 · 组合总览"}</p>
-            <p className="mt-5 text-sm text-primary-foreground/70">{summary.unvaluedCount ? "已估值资产（含待确认资金）" : isFiltered ? "筛选资产合计" : "资产合计"}</p>
+            <div className="flex items-center gap-2.5">
+              <label htmlFor={visibilityId} className="flex cursor-pointer items-center gap-1.5 text-xs text-primary-foreground/75">
+                {showNumbers ? <Eye className="size-3.5" aria-hidden="true" /> : <EyeOff className="size-3.5" aria-hidden="true" />}显示数字
+              </label>
+              <Switch.Root id={visibilityId} checked={showNumbers} onCheckedChange={writeOverviewVisibility} aria-label="显示数字"
+                className="inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full bg-primary-foreground/20 p-1 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-foreground/80 focus-visible:ring-offset-2 focus-visible:ring-offset-foreground data-[state=checked]:bg-copper">
+                <Switch.Thumb className="block size-4 rounded-full bg-primary-foreground shadow-sm transition-transform data-[state=checked]:translate-x-5" />
+              </Switch.Root>
+            </div>
+          </div>
+          <div className="mt-5 grid min-w-0 gap-7 @min-[64rem]/overview:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+          <div className="min-w-0">
+            <p className="text-sm text-primary-foreground/70">{summary.unvaluedCount ? "已估值资产（含待确认资金）" : isFiltered ? "筛选资产合计" : "资产合计"}</p>
             <p className="font-display mt-1 text-[clamp(2rem,6cqi,4.5rem)] font-semibold leading-none tracking-[-.045em]">
-              <Money value={marketValueIncludingPending(summary.marketValue, summary.pendingCash)} className="whitespace-nowrap font-display" />
+              <OverviewValue visible={showNumbers}><Money value={marketValueIncludingPending(summary.marketValue, summary.pendingCash)} className="whitespace-nowrap font-display" /></OverviewValue>
             </p>
             <p className="mt-4 text-xs text-primary-foreground/60">
-              含待确认资金 · {summary.fundCount} 只基金 · {summary.settledCount} 笔已确认
-              {summary.unvaluedCount > 0 ? ` · ${summary.unvaluedCount} 笔缺少净值，未计入资产合计` : ""}
+              {showNumbers ? <>含待确认资金 · {summary.fundCount} 只基金 · {summary.settledCount} 笔已确认
+                {summary.unvaluedCount > 0 ? ` · ${summary.unvaluedCount} 笔缺少净值，未计入资产合计` : ""}</> : "统计数字已隐藏"}
             </p>
           </div>
           <div className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-6 border-t border-primary-foreground/15 pt-5 @min-[20rem]/overview:grid-cols-2 @min-[64rem]/overview:border-l @min-[64rem]/overview:border-t-0 @min-[64rem]/overview:pl-7 @min-[64rem]/overview:pt-0">
-            <OverviewNumber label="持仓成本" value={<Money value={summary.cost} />} detail="仅含已确认持仓" />
-            <OverviewNumber label={summary.unvaluedCount ? "已估值持有收益" : "持有收益"} value={<Money value={summary.holdingPnl} signed className={summary.holdingPnl != null && summary.holdingPnl < 0 ? "!text-[#ffc3b8]" : "!text-[#b4e6c7]"} />} />
-            <OverviewNumber label={incomeLabel(summary.incomeDate)}
-              detail={summary.incomeFundCount < summary.fundCount ? `计入该日 ${summary.incomeFundCount} 只基金` : undefined}
-              value={<Money value={summary.today} signed className={summary.today != null && summary.today < 0 ? "!text-[#ffc3b8]" : "!text-[#b4e6c7]"} />} />
-            <PendingHoldingsDialog positions={groups.flatMap((group) => group.positions)} names={names} managers={managers} trigger={<button type="button" className="@container min-w-0 rounded-lg text-left outline-none transition-colors hover:bg-primary-foreground/10 focus-visible:ring-2 focus-visible:ring-primary-foreground/60" aria-label={`查看待确认申购，${summary.pendingCount} 笔，合计 ${summary.pendingCash.toFixed(2)} 元`}>
+            <OverviewNumber label="持仓成本" value={<OverviewValue visible={showNumbers}><Money value={summary.cost} /></OverviewValue>} detail="仅含已确认持仓" />
+            <OverviewNumber label={summary.unvaluedCount ? "已估值持有收益" : "持有收益"} value={<OverviewValue visible={showNumbers}><Money value={summary.holdingPnl} signed className={summary.holdingPnl != null && summary.holdingPnl < 0 ? "!text-[#ffc3b8]" : "!text-[#b4e6c7]"} /></OverviewValue>} />
+            <OverviewNumber label={showNumbers ? incomeLabel(summary.incomeDate) : "单日收益"}
+              detail={showNumbers && summary.incomeFundCount < summary.fundCount ? `计入该日 ${summary.incomeFundCount} 只基金` : undefined}
+              value={<OverviewValue visible={showNumbers}><Money value={summary.today} signed className={summary.today != null && summary.today < 0 ? "!text-[#ffc3b8]" : "!text-[#b4e6c7]"} /></OverviewValue>} />
+            <PendingHoldingsDialog positions={groups.flatMap((group) => group.positions)} names={names} managers={managers} trigger={<button type="button" className="@container min-w-0 rounded-lg text-left outline-none transition-colors hover:bg-primary-foreground/10 focus-visible:ring-2 focus-visible:ring-primary-foreground/60" aria-label={showNumbers ? `查看待确认申购，${summary.pendingCount} 笔，合计 ${summary.pendingCash.toFixed(2)} 元` : "查看待确认申购明细"}>
               <span className="flex items-center gap-1 text-xs text-primary-foreground/60">待确认资金<ArrowUpRight className="size-3.5" aria-hidden="true" /></span>
-              <span className="mt-1 block whitespace-nowrap text-[clamp(1rem,11cqi,1.5rem)] font-semibold leading-snug tracking-tight"><Money value={summary.pendingCash} /></span>
-              <span className="mt-1 block text-xs text-primary-foreground/60 underline underline-offset-4">查看 {summary.pendingCount} 笔待确认</span>
+              <span className="mt-1 block whitespace-nowrap text-[clamp(1rem,11cqi,1.5rem)] font-semibold leading-snug tracking-tight"><OverviewValue visible={showNumbers}><Money value={summary.pendingCash} /></OverviewValue></span>
+              <span className="mt-1 block text-xs text-primary-foreground/60 underline underline-offset-4">{showNumbers ? `查看 ${summary.pendingCount} 笔待确认` : "查看待确认明细"}</span>
             </button>} />
+          </div>
           </div>
         </div>
       </section>
@@ -96,6 +143,10 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncEr
     </div>}
   </section>
   </>;
+}
+
+function OverviewValue({ visible, children }: { visible: boolean; children: React.ReactNode }) {
+  return visible ? children : <span aria-label="数字已隐藏" className="font-mono tracking-[.18em]">••••</span>;
 }
 
 function OverviewNumber({ label, value, detail }: { label: string; value: React.ReactNode; detail?: React.ReactNode }) {
