@@ -62,6 +62,58 @@ describe("D1 pending subscriptions", () => {
     expect(await resolvePendingSubscriptionD1(binding(cloud), { id: inserted.id, outcome: "failed" })).toMatchObject({ ok: false });
     cloud.close();
   });
+
+  it("backfills an existing ordinary fund, preserves its category and confirms shares on both runtimes", async () => {
+    const { getDb } = await import("../db");
+    const { createPendingSubscription, resolvePendingSubscription } = await import("./pending");
+    const { listPositionDetails } = await import("./index");
+    const db = getDb();
+    db.prepare(`INSERT INTO funds(code,name,manager,currency,venue,is_nasdaq,source_url,updated_at)
+      VALUES('008986','广发上海金ETF联接A','广发基金','CNY','otc',0,'source','2026-11-03')`).run();
+    db.prepare("INSERT INTO nav_snapshots(symbol,as_of,nav,source) VALUES('008986','2026-11-03',2.2,'auto')").run();
+    const cloud = new Database(db.serialize());
+    try {
+      const input = { symbol: "008986", account: "gf_direct" as const, executionOn: "2026-11-03", cutoffPeriod: "before_15" as const, cashDebited: 500, feeAmount: 1 };
+      const actual = await createPendingSubscriptionD1(binding(cloud), input);
+      expect(actual).toEqual(createPendingSubscription(input));
+      if (!actual.ok) throw new Error(actual.error);
+      const sql = "SELECT exposure,symbol,status,shares,cost,cash_debited,fee_amount,order_origin FROM positions WHERE id=?";
+      const pending = { exposure: "fund", symbol: "008986", status: "pending", shares: null, cost: 499, cash_debited: 500, fee_amount: 1, order_origin: "manual" };
+      for (const database of [db, cloud]) {
+        expect(database.prepare(sql).get(actual.id)).toEqual(pending);
+        expect(database.prepare("SELECT code FROM nasdaq_funds WHERE code='008986'").get()).toBeUndefined();
+        expect(database.prepare("SELECT code FROM nav_sync_funds WHERE code='008986'").get()).toEqual({ code: "008986" });
+      }
+      const confirm = { id: actual.id, outcome: "settled" as const, shares: 250, tDate: "2026-11-03", confirmedOn: "2026-11-04" };
+      expect(await resolvePendingSubscriptionD1(binding(cloud), confirm)).toEqual(resolvePendingSubscription(confirm));
+      expect(cloud.prepare(sql).get(actual.id)).toEqual({ ...pending, status: "settled", shares: 250 });
+      expect(cloud.prepare(sql).get(actual.id)).toEqual(db.prepare(sql).get(actual.id));
+      expect(listPositionDetails().find((row) => row.id === actual.id)).toMatchObject({ exposure: "fund", marketValue: 550, holdingPnl: 51 });
+    } finally { cloud.close(); }
+  });
+
+  it("rejects unregistered, foreign currency and exchange funds without creating records", async () => {
+    const { getDb } = await import("../db");
+    const { createPendingSubscription } = await import("./pending");
+    const db = getDb();
+    db.prepare(`INSERT INTO funds(code,name,currency,venue,is_nasdaq,source_url,updated_at) VALUES
+      ('999991','美元基金','USD','otc',0,'source','2026-11-03'),
+      ('999992','场内基金','CNY','exchange',0,'source','2026-11-03')`).run();
+    const cloud = new Database(db.serialize());
+    try {
+      for (const symbol of ["999991", "999992", "999993"]) {
+        const input = { symbol, account: "alipay" as const, executionOn: "2026-11-03", cutoffPeriod: "before_15" as const, cashDebited: 500, feeAmount: 0 };
+        const error = { ok: false, error: "请选择已添加的人民币场外基金" };
+        expect(await createPendingSubscriptionD1(binding(cloud), input)).toEqual(error);
+        expect(createPendingSubscription(input)).toEqual(error);
+        for (const database of [db, cloud]) expect(database.prepare("SELECT id FROM positions WHERE symbol=?").get(symbol)).toBeUndefined();
+      }
+      const plan = db.prepare("SELECT id FROM dca_plans LIMIT 1").get() as { id: number };
+      const mismatched = { symbol: "008986", account: "alipay" as const, dcaPlanId: plan.id, executionOn: "2026-11-03", cutoffPeriod: "before_15" as const, cashDebited: 500, feeAmount: 0 };
+      expect(await createPendingSubscriptionD1(binding(cloud), mismatched)).toEqual(createPendingSubscription(mismatched));
+      expect(createPendingSubscription(mismatched)).toMatchObject({ ok: false });
+    } finally { cloud.close(); }
+  });
 });
 
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));

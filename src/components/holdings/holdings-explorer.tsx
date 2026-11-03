@@ -7,6 +7,7 @@ import { PendingHoldingsDialog } from "./pending-holdings-dialog";
 import { DeletePositionButton, PositionForm } from "@/components/holdings/holdings-forms";
 import { accountLabel } from "@/components/labels";
 import { SalesChannelFilters } from "@/components/sales-channel-filter";
+import { FilterSelect } from "@/components/filter-select";
 import { Money, Qty } from "@/components/money";
 import { advanceWeekdays } from "@/lib/format";
 import { filterHoldingPositions, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, summarizeNasdaqHoldings, type HoldingChannelGroup, type HoldingGroup } from "@/lib/holdings-dashboard";
@@ -86,20 +87,11 @@ export function HoldingsExplorer({ positions, names, managers, syncErrors = {} }
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索基金名称或代码" className="h-10 w-full rounded-lg border border-input bg-card pl-9 pr-3 text-sm outline-none focus:border-copper" />
       </label>
       <div className="grid min-w-0 grid-cols-2 items-end gap-3 min-[480px]:grid-cols-3">
-      <label className="order-1 grid min-w-0 gap-1.5 text-xs text-muted-foreground">
-        <span>范围</span><select aria-label="持仓范围" value={scope} onChange={(event) => setScope(event.target.value)} className="h-10 w-full min-w-0 rounded-lg border border-input bg-card px-3 text-sm text-foreground">
-          <option value="all">全部基金</option><option value="nasdaq">纳指基金</option><option value="fund">其他基金</option>
-        </select>
-      </label>
+      <FilterSelect label="范围" ariaLabel="持仓范围" value={scope} onValueChange={setScope} className="order-1"
+        options={[{ value: "all", label: "全部基金" }, { value: "nasdaq", label: "纳指基金" }, { value: "fund", label: "其他基金" }]} />
       <SalesChannelFilters layout="toolbar" rows={positions} managers={managers} channel={channel} detail={detail} onChannelChange={(value) => { setChannel(value); setDetail("all"); }} onDetailChange={setDetail} />
-      <label className="order-3 col-span-2 grid min-w-0 gap-1.5 text-xs text-muted-foreground min-[480px]:col-span-1">
-        <span className="whitespace-nowrap">排序</span>
-        <select aria-label="排序" value={sort} onChange={(event) => setSort(event.target.value as SortOrder)} className="h-10 w-full min-w-0 rounded-lg border border-input bg-card px-3 text-sm text-foreground">
-          <option value="value">市值从高到低</option>
-          <option value="gain">收益从高到低</option>
-          <option value="symbol">基金代码</option>
-        </select>
-      </label>
+      <FilterSelect<SortOrder> label="排序" value={sort} onValueChange={setSort} className="order-3 col-span-2 min-[480px]:col-span-1"
+        options={[{ value: "value", label: "市值从高到低" }, { value: "gain", label: "收益从高到低" }, { value: "symbol", label: "基金代码" }]} />
       </div>
     </div>
 

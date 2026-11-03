@@ -5,7 +5,7 @@ import type { CutoffPeriod } from "./index";
 import type { PendingInput, PendingResult } from "./pending";
 import type { D1Statement, ReconcileD1 } from "./reconcile-d1";
 
-type Plan = { symbol: string; account: string | null; frequency: DcaFrequency; month_day: number | null; ended_at: string | null; updated_at: string };
+type Plan = { symbol: string; exposure: string; account: string | null; frequency: DcaFrequency; month_day: number | null; ended_at: string | null; updated_at: string };
 type ResolveInput = { id: number; outcome: "settled" | "failed" | "cancelled"; shares?: number; confirmedOn?: string; tDate?: string; executionOn?: string; cutoffPeriod?: CutoffPeriod };
 const POSITION_SIGNATURE = `SELECT json_array(id,status,execution_on,cutoff_period,dca_plan_id,cost,shares,updated_at) FROM positions WHERE id=?`;
 
@@ -21,24 +21,26 @@ export async function createPendingSubscriptionD1(db: ReconcileD1, input: Pendin
   if (planId != null && (!Number.isInteger(planId) || planId <= 0)) return { ok: false, error: "定投计划的基金或账户不一致" };
   const bind = (sql: string, ...values: (string | number | null)[]) => db.prepare(sql).bind(...values);
   const [funds, plans, duplicates] = await db.batch([
-    bind("SELECT 1 FROM nasdaq_funds WHERE code=? AND currency='CNY'", symbol),
-    bind("SELECT symbol,account,frequency,month_day,ended_at,updated_at FROM dca_plans WHERE id=? AND exposure='nasdaq'", planId),
+    bind("SELECT is_nasdaq FROM funds WHERE code=? AND currency='CNY' AND venue='otc'", symbol),
+    bind("SELECT symbol,exposure,account,frequency,month_day,ended_at,updated_at FROM dca_plans WHERE id=?", planId),
     bind("SELECT 1 FROM positions WHERE dca_plan_id=? AND execution_on=? AND status IN ('pending','settled') LIMIT 1", planId, input.executionOn),
   ]);
-  if (!funds.results.length) return { ok: false, error: "请选择目录中的人民币纳指基金" };
+  const fund = funds.results[0] as { is_nasdaq: number } | undefined;
+  if (!fund) return { ok: false, error: "请选择已添加的人民币场外基金" };
+  const exposure = fund.is_nasdaq ? "nasdaq" : "fund";
   const plan = plans.results[0] as Plan | undefined;
-  if (planId != null && (!plan || plan.symbol !== symbol || plan.account !== input.account)) return { ok: false, error: "定投计划的基金或账户不一致" };
+  if (planId != null && (!plan || plan.exposure !== exposure || plan.symbol !== symbol || plan.account !== input.account)) return { ok: false, error: "定投计划的基金或账户不一致" };
   if (plan?.ended_at) return { ok: false, error: "已结束的计划不可记录扣款" };
   if (planId != null && duplicates.results.length) return { ok: false, error: "本期扣款已有待确认或持仓记录" };
   const now = new Date().toISOString();
   const cost = roundDcaMoney(input.cashDebited - input.feeAmount);
   const statements = [bind(`INSERT INTO app_kv(key,value) SELECT '__pending_guard__',NULL WHERE
-    NOT EXISTS (SELECT 1 FROM nasdaq_funds WHERE code=? AND currency='CNY') OR (? IS NOT NULL AND (
-      NOT EXISTS (SELECT 1 FROM dca_plans WHERE id=? AND exposure='nasdaq' AND symbol IS ? AND account IS ? AND frequency IS ? AND month_day IS ? AND ended_at IS NULL AND updated_at IS ?)
+    NOT EXISTS (SELECT 1 FROM funds WHERE code=? AND currency='CNY' AND venue='otc' AND is_nasdaq IS ?) OR (? IS NOT NULL AND (
+      NOT EXISTS (SELECT 1 FROM dca_plans WHERE id=? AND exposure=? AND symbol IS ? AND account IS ? AND frequency IS ? AND month_day IS ? AND ended_at IS NULL AND updated_at IS ?)
       OR EXISTS (SELECT 1 FROM positions WHERE dca_plan_id=? AND execution_on=? AND status IN ('pending','settled'))))`,
-  symbol, planId, planId, plan?.symbol ?? null, plan?.account ?? null, plan?.frequency ?? null, plan?.month_day ?? null, plan?.updated_at ?? null, planId, input.executionOn),
+  symbol, fund.is_nasdaq, planId, planId, exposure, plan?.symbol ?? null, plan?.account ?? null, plan?.frequency ?? null, plan?.month_day ?? null, plan?.updated_at ?? null, planId, input.executionOn),
   bind(`INSERT INTO positions (account,exposure,symbol,shares,cost,status,note,recorded_on,execution_on,updated_at,dca_plan_id,cash_debited,fee_amount,cutoff_period,order_origin)
-    VALUES (?,'nasdaq',?,NULL,?,'pending',?,?,?,?,?,?,?,?,?) RETURNING id`, input.account, symbol, cost, input.note?.trim() || null,
+    VALUES (?,?,?,NULL,?,'pending',?,?,?,?,?,?,?,?,?) RETURNING id`, input.account, exposure, symbol, cost, input.note?.trim() || null,
   input.executionOn, input.executionOn, now, planId, input.cashDebited, input.feeAmount, input.cutoffPeriod, planId == null ? "manual" : "dca")];
   if (plan && planId != null) statements.push(bind("UPDATE dca_plans SET invested_total=invested_total+?,next_debit_date=?,updated_at=? WHERE id=?",
     cost, advanceDebitDate({ frequency: plan.frequency, lastDue: input.executionOn, monthDay: plan.month_day }), now, planId));

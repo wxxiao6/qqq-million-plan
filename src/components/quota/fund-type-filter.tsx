@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { FilterSelect } from "@/components/filter-select";
 import type { FundSort, SalesChannel } from "@/lib/nasdaq-fund-sort";
 
 export type FundTypeFilterValue = "all" | "nasdaq_100" | "nasdaq_biotech" |
@@ -24,18 +25,18 @@ export function FundTypeFilter({ selected, channel, usdChannel, sort, availableT
 }) {
   const router = useRouter();
 
-  return <select
-    aria-label="筛选基金类型"
+  return <FilterSelect<FundTypeFilterValue>
+    label="筛选基金类型"
+    hideLabel
     value={selected}
-    onChange={(event) => {
+    onValueChange={(value) => {
       const params = new URLSearchParams({
-        channel, usdChannel, sort, type: event.target.value,
+        channel, usdChannel, sort, type: value,
       });
       router.push(`/quota?${params}`, { scroll: false });
     }}
-    className="h-8 max-w-40 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-  >
-    <option value="all">全部类型</option>
-    {availableTypes.map((type) => <option key={type} value={type}>{TYPE_LABELS[type]}</option>)}
-  </select>;
+    className="w-40 max-w-full"
+    triggerClassName="data-[size=default]:h-8 rounded-md px-2.5 text-xs font-medium"
+    options={[{ value: "all", label: "全部类型" }, ...availableTypes.map((type) => ({ value: type, label: TYPE_LABELS[type] }))]}
+  />;
 }

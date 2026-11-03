@@ -79,3 +79,6 @@ export const HOLDING_FUNDS_SQL = `SELECT f.code,f.name,f.manager,f.is_nasdaq AS 
   LEFT JOIN fund_nav_sync s ON s.code=f.code
   WHERE f.currency='CNY' AND (f.venue='otc' OR EXISTS(SELECT 1 FROM positions p WHERE p.symbol=f.code)) AND (EXISTS(SELECT 1 FROM nasdaq_funds r WHERE r.code=f.code)
     OR EXISTS(SELECT 1 FROM positions p WHERE p.symbol=f.code AND p.exposure IN ('nasdaq','fund'))) ORDER BY f.code`;
+
+/** Backfill selects existing identities only; it never discovers a new fund. */
+export const PENDING_FUNDS_SQL = "SELECT code,name,manager FROM funds WHERE currency='CNY' AND venue='otc' ORDER BY code";

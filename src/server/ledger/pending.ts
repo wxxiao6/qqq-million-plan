@@ -24,14 +24,15 @@ export function createPendingSubscription(input: PendingInput): PendingResult {
   if (!Number.isFinite(input.feeAmount) || input.feeAmount < 0 || input.feeAmount >= input.cashDebited) return { ok: false, error: "手续费须小于扣款金额" };
   const symbol = input.symbol.trim();
   if (!symbol) return { ok: false, error: "请选择基金" };
-  const fund = db.prepare("SELECT 1 FROM nasdaq_funds WHERE code = ? AND currency = 'CNY'").get(symbol);
-  if (!fund) return { ok: false, error: "请选择目录中的人民币纳指基金" };
+  const fund = db.prepare("SELECT is_nasdaq FROM funds WHERE code = ? AND currency = 'CNY' AND venue = 'otc'").get(symbol) as { is_nasdaq: number } | undefined;
+  if (!fund) return { ok: false, error: "请选择已添加的人民币场外基金" };
+  const exposure = fund.is_nasdaq ? "nasdaq" : "fund";
 
   try {
     const id = db.transaction(() => {
       let plan: { symbol: string; account: string | null; frequency: DcaFrequency; month_day: number | null; ended_at: string | null } | undefined;
       if (input.dcaPlanId != null) {
-        plan = db.prepare("SELECT symbol, account, frequency, month_day, ended_at FROM dca_plans WHERE id = ? AND exposure = 'nasdaq'").get(input.dcaPlanId) as typeof plan;
+        plan = db.prepare("SELECT symbol, account, frequency, month_day, ended_at FROM dca_plans WHERE id = ? AND exposure = ?").get(input.dcaPlanId, exposure) as typeof plan;
         if (!plan || plan.symbol !== symbol || plan.account !== input.account) throw new Error("定投计划的基金或账户不一致");
         if (plan.ended_at) throw new Error("已结束的计划不可记录扣款");
         const duplicate = db.prepare("SELECT id FROM positions WHERE dca_plan_id = ? AND execution_on = ? AND status IN ('pending', 'settled') LIMIT 1").get(input.dcaPlanId, input.executionOn);
@@ -42,8 +43,8 @@ export function createPendingSubscription(input: PendingInput): PendingResult {
       const result = db.prepare(`INSERT INTO positions
         (account, exposure, symbol, shares, cost, status, note, recorded_on, execution_on,
          updated_at, dca_plan_id, cash_debited, fee_amount, cutoff_period, order_origin)
-         VALUES (?, 'nasdaq', ?, NULL, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(input.account, symbol, cost, input.note?.trim() || null, input.executionOn,
+         VALUES (?, ?, ?, NULL, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(input.account, exposure, symbol, cost, input.note?.trim() || null, input.executionOn,
           input.executionOn, now, input.dcaPlanId ?? null, input.cashDebited, input.feeAmount,
           input.cutoffPeriod, input.dcaPlanId == null ? "manual" : "dca");
       if (plan && input.dcaPlanId != null) {

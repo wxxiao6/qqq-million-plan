@@ -30,6 +30,10 @@ describe("D1 holdings page read", () => {
       const { listDcaPlans } = await import("../dca");
       const { readHoldingsManagementD1 } = await import("./read-d1");
       const db = getDb();
+      db.prepare(`INSERT INTO funds(code,name,manager,currency,venue,is_nasdaq,source_url,updated_at) VALUES
+        ('008986','广发上海金ETF联接A','广发基金','CNY','otc',0,'source','2026-10-01'),
+        ('999991','美元基金',NULL,'USD','otc',0,'source','2026-10-01'),
+        ('999992','场内基金',NULL,'CNY','exchange',0,'source','2026-10-01')`).run();
       db.prepare(`INSERT INTO positions (account,exposure,symbol,shares,cost,status,recorded_on,updated_at)
         VALUES ('alipay','nasdaq','016452',100,800,'settled','2026-10-01','2026-10-01'),
           ('jd','nasdaq','016452',NULL,100,'pending','2026-10-02','2026-10-02')`).run();
@@ -42,8 +46,12 @@ describe("D1 holdings page read", () => {
       const positions = ledger.listPositionDetails().filter((position) => position.exposure === "nasdaq");
       expect(result.positions).toEqual(positions);
       expect(result.names).toEqual(Object.fromEntries(funds.map((fund) => [fund.code, fund.name])));
-      expect(result.pendingNames).toEqual(ledger.listNasdaqHoldingNames());
-      expect(result.managers).toEqual(ledger.listNasdaqHoldingManagers());
+      expect(result.pendingNames["008986"]).toBe("广发上海金ETF联接A");
+      expect(result.pendingNames["016452"]).toBeDefined();
+      expect(result.pendingNames["999991"]).toBeUndefined();
+      expect(result.pendingNames["999992"]).toBeUndefined();
+      expect(result.names["008986"]).toBeUndefined();
+      expect(result.managers).toEqual({ ...ledger.listNasdaqHoldingManagers(), "008986": "广发基金" });
       expect(result.plans).toEqual(listDcaPlans());
       cloud.close();
     } finally { vi.useRealTimers(); }
