@@ -11,7 +11,7 @@ import { beijingTodayISO } from "@/lib/format";
 import { getDb } from "../db";
 import { readJob, readNetInflow } from "../jobs/status";
 export type Account = "alipay" | "gf_direct" | "cmb" | "jd" | "other";
-export type Exposure = "nasdaq" | "gold" | "crypto";
+export type Exposure = "nasdaq" | "fund" | "gold" | "crypto";
 export type PositionStatus = "settled" | "pending" | "failed" | "cancelled";
 export type CutoffPeriod = "before_15" | "after_15";
 
@@ -541,14 +541,14 @@ export function listNasdaqPlatformGroups(): NasdaqPlatformGroup[] {
 
 export function getDynamicMarketValue(asOf?: string): number | null {
   return sumNullable(
-    (["nasdaq", "gold", "crypto"] as Exposure[]).map(
+    (["nasdaq", "fund", "gold", "crypto"] as Exposure[]).map(
       (exposure) => getExposureSummary(exposure, asOf).marketValue,
     ),
   );
 }
 
 export function hasDynamicSettled(): boolean {
-  return (["nasdaq", "gold", "crypto"] as Exposure[]).some(
+  return (["nasdaq", "fund", "gold", "crypto"] as Exposure[]).some(
     (exposure) => getExposureSummary(exposure).hasSettled,
   );
 }

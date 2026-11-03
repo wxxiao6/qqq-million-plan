@@ -1,5 +1,7 @@
 "use server";
 
+import { fundDatabase } from "../funds/database";
+import { attachFundNavStatement, readPersonalFund } from "../funds/personal";
 import { requireUser } from "@/server/auth/context";
 import { revalidatePath } from "next/cache";
 import { resolveHoldingNumbers } from "@/lib/holding-input";
@@ -46,7 +48,7 @@ export async function finishPendingSubscription(input: Parameters<typeof resolve
 
 const ACCOUNTS: Account[] = ["alipay", "gf_direct", "cmb", "jd", "other"];
 const STATUSES: PositionStatus[] = ["settled", "pending"];
-const EXPOSURES: Exposure[] = ["nasdaq", "gold", "crypto"];
+const EXPOSURES: Exposure[] = ["nasdaq", "fund", "gold", "crypto"];
 
 function touch() {
   upsertTodaySnapshot();
@@ -76,7 +78,7 @@ async function cloudWriteWithSnapshot(sql: string, values: (string | number | nu
 }
 
 function duplicateNasdaqHoldingMessage(db: ReturnType<typeof getDb>, account: string, symbol: string): string | null {
-  const rows = db.prepare("SELECT status, dca_plan_id FROM positions WHERE exposure = 'nasdaq' AND account = ? AND symbol = ? AND status IN ('pending', 'settled')").all(account, symbol) as { status: string; dca_plan_id: number | null }[];
+  const rows = db.prepare("SELECT status, dca_plan_id FROM positions WHERE exposure IN ('nasdaq','fund') AND account = ? AND symbol = ? AND status IN ('pending', 'settled')").all(account, symbol) as { status: string; dca_plan_id: number | null }[];
   if (!rows.length) return null;
   if (rows.some((row) => row.status === "settled" && row.dca_plan_id == null)) return "该购买平台已有此基金的持仓，请在持仓管理中编辑已有持仓";
   if (rows.some((row) => row.dca_plan_id != null)) return "该购买平台已有此基金的定投持仓，请在定投管理的执行记录中调整";
@@ -95,6 +97,14 @@ export async function savePosition(input: {
   note?: string;
 }): Promise<ActionResult> {
   await requireUser();
+  if (["nasdaq", "fund"].includes(input.exposure ?? "nasdaq")) {
+    const database = await fundDatabase();
+    const fund = await readPersonalFund(database, input.symbol.trim());
+    if (!fund || fund.currency !== "CNY" || fund.venue !== "otc") return { ok: false, error: "请先查询并选择人民币场外基金" };
+    input = { ...input, exposure: fund.isNasdaq ? "nasdaq" : "fund" };
+    await database.batch([attachFundNavStatement(database, fund.code)]);
+  }
+
   if (process.env.CLOUDFLARE_RUNTIME === "1") {
     const result = await savePositionD1(await cloudDatabase(), input);
     if (result.ok) invalidateViews();
@@ -121,7 +131,7 @@ export async function savePosition(input: {
       if (input.id && !existing) throw new Error("找不到持仓");
       if (existing && (existing.status !== "settled" || existing.dca_plan_id != null)) throw new Error("请使用待确认处理操作；定投持仓不可在此改写");
       const keyChanged = !existing || existing.account !== input.account || existing.symbol !== symbol || existing.exposure !== exposure;
-      const duplicateMessage = exposure === "nasdaq" && keyChanged ? duplicateNasdaqHoldingMessage(db, input.account, symbol) : null;
+      const duplicateMessage = (exposure === "nasdaq" || exposure === "fund") && keyChanged ? duplicateNasdaqHoldingMessage(db, input.account, symbol) : null;
       if (duplicateMessage) throw new Error(duplicateMessage);
       if (input.id) {
         db.prepare(`UPDATE positions SET account = ?, exposure = ?, symbol = ?, shares = ?, cost = ?,

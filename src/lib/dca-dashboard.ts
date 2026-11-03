@@ -3,6 +3,14 @@ import { filterBySalesChannel, type SalesChannelFilter } from "./sales-channel-f
 
 type Execution = { planId: number; executionOn: string | null; recordedOn: string | null };
 
+/** Pending includes earlier months and paused/ended plans; failed/cancelled never count as assets. */
+export function summarizeDcaProgress(records: Array<{ status: string; executionOn: string | null; recordedOn: string | null; cashDebited: number }>, today: string) {
+  const pending = records.filter((record) => record.status === "pending");
+  const monthlyConfirmed = records.filter((record) => record.status === "settled" && (record.executionOn ?? record.recordedOn)?.startsWith(today.slice(0, 7)))
+    .reduce((sum, record) => sum + record.cashDebited, 0);
+  return { monthlyConfirmed, pendingCount: pending.length, pendingAmount: pending.reduce((sum, record) => sum + record.cashDebited, 0) };
+}
+
 export function filterDcaBySalesChannel<T extends { planId: number }>(
   plans: DcaPlanView[],
   records: T[],

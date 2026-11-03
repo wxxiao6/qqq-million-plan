@@ -18,7 +18,7 @@ export async function refreshCloudChunk(db: CatalogDb, input: {
 }, fetcher: typeof fetch = fetch) {
   const limit = input.phase === "nav" ? NAV_CHUNK_SIZE : AGENCY_QUOTA_CHUNK_SIZE;
   const sql = input.phase === "nav"
-    ? "SELECT code, share_class AS shareClass, currency FROM nasdaq_funds WHERE code > ? ORDER BY code LIMIT ?"
+    ? "SELECT f.code, 'A' AS shareClass, f.currency FROM funds f JOIN nav_sync_funds s ON s.code=f.code WHERE f.code > ? ORDER BY f.code LIMIT ?"
     : "SELECT code, share_class AS shareClass, currency FROM nasdaq_funds WHERE venue='otc' AND code > ? ORDER BY code LIMIT ?";
   const statement = db.prepare(sql).bind(input.after, limit + 1) as { all<T>(): Promise<{ results: T[] }> };
   const rows = (await statement.all<AgencyQuotaFund>()).results;

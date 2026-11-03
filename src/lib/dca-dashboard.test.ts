@@ -1,10 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { DcaPlanView } from "./dca";
-import { filterDcaBySalesChannel, plannedDcaDates, summarizeDcaAmounts, summarizeDcaSchedule } from "./dca-dashboard";
+import { filterDcaBySalesChannel, plannedDcaDates, summarizeDcaAmounts, summarizeDcaSchedule, summarizeDcaProgress } from "./dca-dashboard";
 
 const plan = (id: number, nextDebitDate: string, status: "active" | "paused" = "active") => ({
   id, nextDebitDate, status, amount: 10, frequency: "daily",
 }) as DcaPlanView;
+
+it("本月已确认按申购月份统计，待确认跨月累计，失败撤单不计入", () => {
+  const record = (status: string, executionOn: string | null, cashDebited: number, recordedOn = "2026-11-03") => ({ status, executionOn, cashDebited, recordedOn });
+  expect(summarizeDcaProgress([
+    record("settled", "2026-11-02", 100), record("settled", "2026-10-30", 200),
+    record("pending", "2026-10-30", 30), record("pending", "2026-11-03", 40),
+    record("settled", null, 50), record("failed", "2026-11-03", 500), record("cancelled", "2026-11-03", 600),
+  ], "2026-11-03")).toEqual({ monthlyConfirmed: 150, pendingCount: 2, pendingAmount: 70 });
+  expect(summarizeDcaProgress([], "2026-11-03")).toEqual({ monthlyConfirmed: 0, pendingCount: 0, pendingAmount: 0 });
+});
 
 describe("定投管理今日安排", () => {
   it("已记录执行的计划不再显示为待处理，暂停计划不计入", () => {

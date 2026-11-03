@@ -10,7 +10,7 @@ function binding(db: Database.Database) {
   return { prepare(sql: string) { return { bind(...values: (string | number | null)[]) {
     return { sql, values, async all<T>() { return { results: db.prepare(sql).all(...values) as T[] }; } };
   } }; }, async batch(statements: unknown[]) { return db.transaction(() => statements.map((item) => {
-    const stmt = item as { sql: string; values: (string | number | null)[] }; return db.prepare(stmt.sql).run(...stmt.values);
+    const stmt = item as { sql: string; values: (string | number | null)[] }; const query = db.prepare(stmt.sql); return { results: query.reader ? query.all(...stmt.values) : (query.run(...stmt.values), []) };
   }))(); } };
 }
 it("batches weekly fund info, handles failure, protects credentials, and retries idempotently", async () => {

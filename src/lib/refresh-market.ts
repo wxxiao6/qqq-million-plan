@@ -20,7 +20,7 @@ export async function refreshMarket(fetcher: typeof fetch = fetch): Promise<Resu
     const response = await fetcher("/api/market/refresh", {
       method: "POST", ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
     });
-    const result = await response.json();
+    const result = await response.json() as Result & Totals & { chunked?: boolean; runId?: string; observedAt?: string; bizDate?: string; next?: string | null };
     if (!response.ok && response.status !== 207 && !(body == null && typeof result.ok === "boolean")) {
       throw new Error(result.error ?? "刷新请求失败");
     }

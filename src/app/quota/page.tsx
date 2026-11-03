@@ -1,3 +1,5 @@
+import { fundDatabase } from "@/server/funds/database";
+import { readQuotaDailyStatus } from "@/server/jobs/quota-status";
 import { RefreshMarketButton } from "@/components/quota/refresh-market";
 import { EvidenceDialog } from "@/components/quota/evidence-dialog";
 import { FundTypeFilter, type FundTypeFilterValue } from "@/components/quota/fund-type-filter";
@@ -12,6 +14,10 @@ import type { CatalogRow } from "@/server/funds/catalog";
 import { listNasdaqFundsForRuntime } from "@/server/funds/catalog-runtime";
 
 export const dynamic = "force-dynamic";
+
+function quotaTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+}
 
 const THEME: Record<CatalogRow["theme"], string> = {
   nasdaq_100: "纳指 100",
@@ -156,6 +162,7 @@ function FundTable({ rows, channel, sort, queryChannel, queryUsdChannel, type, t
     </TableRow></TableHeader>
     {companyGroups.map((group, groupIndex) => <TableBody key={`${channel}-${group.rows[0].code}`}>
       {group.rows.map((row, rowIndex) => {
+      const quotaObservedAt = channel === "direct" ? row.directQuoteObservedAt : row.agencyQuoteObservedAt;
       const agencyEvidence = channel === "agency" ? row.agencySellers.find((seller) => seller.sourceUrl)?.sourceUrl : null;
       const noticeEvidence = channel === "agency" ? row.agencyQuoteSourceUrl : channel === "direct" ? row.directQuoteSourceUrl : null;
       return <TableRow key={`${channel}-${row.code}`} className={groupIndex > 0 && rowIndex === 0 ? "border-t border-t-border" : undefined}>
@@ -174,6 +181,7 @@ function FundTable({ rows, channel, sort, queryChannel, queryUsdChannel, type, t
           {agencyEvidence ? <EvidenceDialog kind="sales" fundName={row.name} code={row.code} sourceUrl={agencyEvidence}
             sellers={row.agencySellers} /> : null}
           {noticeEvidence ? <EvidenceDialog kind="notice" fundName={row.name} code={row.code} sourceUrl={noticeEvidence} /> : null}
+          {quotaObservedAt ? <time dateTime={quotaObservedAt} className="mt-1 block text-xs text-muted-foreground">核验于 {quotaTime(quotaObservedAt)}</time> : null}
         </TableCell> : null}
         <TableCell className="font-mono tabular-nums">{row.nav == null ? "—" : row.nav.toFixed(4)}</TableCell>
         <TableCell className={`font-mono tabular-nums ${row.dailyChangePct == null ? "" : row.dailyChangePct < 0 ? "text-loss" : "text-gain"}`}>
@@ -196,7 +204,8 @@ export default async function QuotaPage({
   const selectedChannel = params.channel === "direct" ? "direct" : "agency";
   const selectedUsdChannel = params.usdChannel === "direct" ? "direct" : "agency";
   const sort: FundSort = params.sort === "quota_asc" || params.sort === "tracking_asc" || params.sort === "tracking_desc" ? params.sort : "quota";
-  const allFunds = await listNasdaqFundsForRuntime();
+  const [allFunds, quotaStatus] = await Promise.all([listNasdaqFundsForRuntime(), fundDatabase().then((db) => readQuotaDailyStatus(db))]);
+  const quotaLabels = { scheduled: "今日额度待更新", collecting: "今日额度采集中", collected: "采集完成，等待上传", uploaded: "今日额度已更新", partial: "今日额度部分更新", failed: "今日额度采集失败", missing: "尚未收到今日额度" };
   const visibleUniverse = allFunds.filter((fund) => fund.venue === "exchange" ||
     (fund.currency === "USD" ? fund[selectedUsdChannel === "agency" ? "agencyStatus" : "directStatus"] :
       fund[selectedChannel === "agency" ? "agencyStatus" : "directStatus"]) !== "unavailable");
@@ -228,6 +237,10 @@ export default async function QuotaPage({
       aside={<RefreshMarketButton />}
     />
     <div className="page-stack">
+      <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm">
+        <div><span className="font-medium">{quotaLabels[quotaStatus.state]}</span><span className="ml-3 text-muted-foreground">已接收 {quotaStatus.accepted}/{quotaStatus.expected} 个基金渠道</span></div>
+        <p className="text-xs text-muted-foreground">{quotaStatus.state === "uploaded" ? "每日 06:00 采集 · 北京时间" : "每日 06:00 采集；未更新渠道保留上次核验值"}{quotaStatus.receivedAt ? ` · 最近接收 ${quotaTime(quotaStatus.receivedAt)}` : ""}</p>
+      </div>
       {visibleCnyOtc.length > 0 ? <Band label={`人民币场外基金（${visibleCnyOtc.length}）`}>
         <QuotaTotals rows={cnyOtc} />
         <ChannelTabs label="人民币销售渠道" selected={selectedChannel} href={(channel) => quotaHref(channel, selectedUsdChannel, sort, type)} />

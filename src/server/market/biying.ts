@@ -1,7 +1,7 @@
 import { beijingTodayISO } from "@/lib/format";
 import { getDb } from "../db";
-import { getDynamicMarketValue } from "../ledger";
-import { updateAutoPendingEstimates } from "../ledger/recent-pending";
+import { localFundDatabase } from "../funds/database";
+import { syncNavChunkD1, updatePortfolioSnapshotD1, NAV_CHUNK_SIZE } from "./nav-d1";
 import { writeJob } from "../jobs/status";
 import type { FundNavSource } from "./source";
 
@@ -103,35 +103,23 @@ export type BiyingNavSyncResult = { ok: boolean; reused?: boolean; bizDate: stri
 
 export async function syncNasdaqFundNav(now = new Date(), fetcher: typeof fetch = fetch, source: FundNavSource = biyingNavSource): Promise<BiyingNavSyncResult> {
   const bizDate = beijingTodayISO(now);
-  const codes = catalogCodes();
+  const codes = (getDb().prepare("SELECT code FROM nav_sync_funds ORDER BY code").all() as Array<{ code: string }>).map((row) => row.code);
   const jobName = `${source.name}_nav`;
-  const previous = getDb().prepare("SELECT status FROM fund_ingestion_runs WHERE job_name=? AND biz_date=?").get(jobName, bizDate) as { status: string } | undefined;
-  if (previous?.status === "succeeded") return { ok: true, reused: true, bizDate, success: codes.length, failed: [] };
+  // A successful morning run must not hide an evening publication or a new holding.
   beginRun(jobName, bizDate, now.toISOString(), codes.length);
-  const settled = await parallel(codes, Number(process.env.FUND_DATA_CONCURRENCY ?? process.env.BIYING_CONCURRENCY ?? 4), (fund) => source.fetchNav(fund.code, fetcher));
-  const good = settled.flatMap(({ result }) => result.status === "fulfilled" ? [result.value] : []);
-  const failed = settled.flatMap(({ item, result }) => result.status === "rejected" ? [{ code: item.code, error: result.reason instanceof Error ? result.reason.message : String(result.reason) }] : []);
-  const db = getDb();
-  const held = new Set((db.prepare(`SELECT DISTINCT symbol FROM positions WHERE exposure='nasdaq' UNION SELECT DISTINCT symbol FROM dca_plans WHERE status='active' AND exposure='nasdaq'`).all() as Array<{ symbol: string }>).map((row) => row.symbol));
-  const save = db.transaction(() => {
-    const history = db.prepare(`INSERT INTO fund_nav_history (code,nav_date,nav,daily_change_pct,source,source_url,fetched_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(code,nav_date,source) DO UPDATE SET nav=excluded.nav,daily_change_pct=excluded.daily_change_pct,source_url=excluded.source_url,fetched_at=excluded.fetched_at`);
-    const current = db.prepare(`INSERT INTO nasdaq_fund_observations (code,nav,nav_date,daily_change_pct,source_url,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(code) DO UPDATE SET nav=excluded.nav,nav_date=excluded.nav_date,daily_change_pct=excluded.daily_change_pct,source_url=excluded.source_url,updated_at=excluded.updated_at`);
-    const snapshot = db.prepare(`INSERT INTO nav_snapshots (symbol,as_of,nav,source,nav_change_pct,source_url) VALUES (?,?,?,?,?,?) ON CONFLICT(symbol,as_of) DO UPDATE SET nav=excluded.nav,source=excluded.source,nav_change_pct=excluded.nav_change_pct,source_url=excluded.source_url WHERE nav_snapshots.source <> 'manual'`);
-    for (const item of good) {
-      history.run(item.code, item.navDate, item.nav, item.dailyChangePct, source.name, item.sourceUrl, now.toISOString());
-      current.run(item.code, item.nav, item.navDate, item.dailyChangePct, item.sourceUrl, now.toISOString());
-      if (held.has(item.code)) {
-        snapshot.run(item.code, item.navDate, item.nav, source.name, item.dailyChangePct, item.sourceUrl);
-        updateAutoPendingEstimates(item.code, bizDate);
-      }
-    }
-    const marketValue = getDynamicMarketValue(bizDate);
-    if (marketValue != null) db.prepare(`INSERT INTO portfolio_snapshots (as_of,dynamic_mv) VALUES (?,?) ON CONFLICT(as_of) DO UPDATE SET dynamic_mv=excluded.dynamic_mv`).run(bizDate, marketValue);
-  });
-  save();
-  finishRun(jobName, bizDate, new Date().toISOString(), good.length, failed);
-  const result = { ok: failed.length === 0, bizDate, success: good.length, failed };
-  writeJob(jobName as "biying_nav" | "tiantian_nav", { ok: result.ok, partial: failed.length > 0 && good.length > 0, at: now.toISOString(), bizDate, error: failed.length ? JSON.stringify(failed) : undefined });
+  const database = localFundDatabase();
+  let success = 0;
+  const failed: Array<{ code: string; error: string }> = [];
+  for (let offset = 0; offset < codes.length; offset += NAV_CHUNK_SIZE) {
+    const result = await syncNavChunkD1(database, { codes: codes.slice(offset, offset + NAV_CHUNK_SIZE), observedAt: now.toISOString() }, source, fetcher);
+    success += result.success;
+    failed.push(...result.failed);
+  }
+  await updatePortfolioSnapshotD1(database, bizDate);
+  finishRun(jobName, bizDate, new Date().toISOString(), success, failed);
+  const result = { ok: failed.length === 0, bizDate, success, failed };
+  writeJob(jobName as "biying_nav" | "tiantian_nav", { ok: result.ok, partial: failed.length > 0 && success > 0,
+    at: now.toISOString(), bizDate, error: failed.length ? JSON.stringify(failed) : undefined });
   return result;
 }
 

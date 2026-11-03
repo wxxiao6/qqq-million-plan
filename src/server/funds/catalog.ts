@@ -281,12 +281,14 @@ export type CatalogRow = CatalogFund & {
   agencyScopeSourceUrl: string | null;
   agencyPurchaseFeePct: number | null;
   agencyQuoteUpdatedAt: string | null;
+  agencyQuoteObservedAt?: string | null;
   agencyQuoteSourceUrl: string | null;
   directTradeStatus: "open" | "limited" | "paused" | null;
   directDailyLimit: number | null;
   directLimitScope: string | null;
   directPurchaseFeePct: number | null;
   directQuoteUpdatedAt: string | null;
+  directQuoteObservedAt?: string | null;
   directQuoteSourceUrl: string | null;
 };
 
@@ -318,6 +320,7 @@ export const CATALOG_ROWS_SQL = `
            qc_agency.source_url AS agencyScopeSourceUrl,
            qc_agency.purchase_fee_pct AS agencyPurchaseFeePct,
            qc_agency.updated_at AS agencyQuoteUpdatedAt,
+           qc_agency.observed_at AS agencyQuoteObservedAt,
            qc_agency.source_url AS agencyQuoteSourceUrl,
            qc_direct.status AS directTradeStatus,
            CASE WHEN qc_direct.status='paused' THEN NULL
@@ -325,6 +328,7 @@ export const CATALOG_ROWS_SQL = `
            qc_direct.quota_scope AS directLimitScope,
            qc_direct.purchase_fee_pct AS directPurchaseFeePct,
            qc_direct.updated_at AS directQuoteUpdatedAt,
+           qc_direct.observed_at AS directQuoteObservedAt,
            qc_direct.source_url AS directQuoteSourceUrl
     FROM nasdaq_funds f
     LEFT JOIN nasdaq_fund_sales_channels c ON c.code=f.code

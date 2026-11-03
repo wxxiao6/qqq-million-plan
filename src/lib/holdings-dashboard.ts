@@ -30,6 +30,7 @@ export type HoldingChannelGroup = {
   settledPositions: PositionDetail[];
   pendingPositions: PositionDetail[];
   shares: number | null;
+  unitCost: number | null;
   cost: number;
   pendingCash: number;
   marketValue: number | null;
@@ -55,15 +56,18 @@ export function groupHoldingChannels(positions: PositionDetail[]): HoldingChanne
     const dayValued = settledPositions.filter((row) => row.today != null);
     const navs = settledPositions.filter((row) => row.nav != null).map((row) => row.nav!);
     const navDates = settledPositions.map((row) => row.navAsOf).filter((date): date is string => Boolean(date));
+    const shares = settledPositions.length > 0 && settledPositions.every((row) => row.shares != null)
+      ? settledPositions.reduce((sum, row) => sum + row.shares!, 0)
+      : null;
+    const cost = settledPositions.reduce((sum, row) => sum + row.cost, 0);
     return {
       account,
       positions: rows,
       settledPositions,
       pendingPositions,
-      shares: settledPositions.length > 0 && settledPositions.every((row) => row.shares != null)
-        ? settledPositions.reduce((sum, row) => sum + row.shares!, 0)
-        : null,
-      cost: settledPositions.reduce((sum, row) => sum + row.cost, 0),
+      shares,
+      unitCost: shares != null && shares > 0 ? cost / shares : null,
+      cost,
       pendingCash: pendingPositions.reduce((sum, row) => sum + row.cashDebited, 0),
       marketValue: valued.length ? valued.reduce((sum, row) => sum + row.marketValue!, 0) : null,
       holdingPnl: valued.length ? valued.reduce((sum, row) => sum + (row.holdingPnl ?? 0), 0) : null,
@@ -76,7 +80,7 @@ export function groupHoldingChannels(positions: PositionDetail[]): HoldingChanne
 
 export function groupNasdaqHoldings(positions: PositionDetail[], names: Record<string, string>): HoldingGroup[] {
   const bySymbol = new Map<string, PositionDetail[]>();
-  for (const position of positions.filter((item) => item.exposure === "nasdaq")) {
+  for (const position of positions.filter((item) => (item.exposure === "nasdaq" || item.exposure === "fund"))) {
     const rows = bySymbol.get(position.symbol) ?? [];
     rows.push(position);
     bySymbol.set(position.symbol, rows);
@@ -127,5 +131,5 @@ export function summarizeNasdaqHoldings(groups: HoldingGroup[]) {
 }
 
 export function marketValueIncludingPending(marketValue: number | null, pendingCash: number): number | null {
-  return marketValue == null ? null : marketValue + pendingCash;
+  return marketValue == null ? (pendingCash > 0 ? pendingCash : null) : marketValue + pendingCash;
 }

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ACCOUNT_LABELS } from "@/components/labels";
 import { FormError } from "@/components/form-error";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { todayISO } from "@/lib/format";
@@ -62,14 +62,14 @@ export function PendingSubscriptionForm({ names, plans }: { names: Record<string
   </Dialog>;
 }
 
-export function ResolvePendingForm({ id, executionOn, cutoffPeriod }: { id: number; executionOn: string | null; cutoffPeriod: CutoffPeriod | null }) {
+export function ResolvePendingForm({ id, executionOn, cutoffPeriod, description }: { id: number; executionOn: string | null; cutoffPeriod: CutoffPeriod | null; description?: React.ReactNode }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return <Dialog open={open} onOpenChange={setOpen}>
     <DialogTrigger asChild><Button size="sm" variant="outline">处理待确认</Button></DialogTrigger>
-    <DialogContent><form className="grid gap-4" onSubmit={async (event) => {
+    <DialogContent className="max-h-[90dvh] overflow-y-auto"><form className="grid gap-4" onSubmit={async (event) => {
       event.preventDefault(); setBusy(true); setError(null);
       const data = new FormData(event.currentTarget);
       try {
@@ -78,7 +78,7 @@ export function ResolvePendingForm({ id, executionOn, cutoffPeriod }: { id: numb
         setOpen(false); router.refresh();
       } finally { setBusy(false); }
     }}>
-      <DialogHeader><DialogTitle>确认申购份额</DialogTitle></DialogHeader><FormError error={error} />
+      <DialogHeader className="pr-5 text-left"><DialogTitle>确认申购份额</DialogTitle>{description ? <DialogDescription>{description}</DialogDescription> : null}</DialogHeader><FormError error={error} />
       {!executionOn ? <div className="grid gap-2"><Label htmlFor={`execution-${id}`}>实际申购日期</Label><Input id={`execution-${id}`} name="executionOn" type="date" required /></div> : null}
       {!cutoffPeriod ? <div className="grid gap-2"><Label htmlFor={`cutoff-${id}`}>申请受理时间</Label><select id={`cutoff-${id}`} name="cutoffPeriod" className="h-10 rounded-md border bg-background px-3" defaultValue="" required><option value="" disabled>请选择</option><option value="before_15">15:00 前</option><option value="after_15">15:00 后</option></select></div> : null}
       <div className="grid gap-2"><Label htmlFor={`shares-${id}`}>确认份额</Label><Input id={`shares-${id}`} name="shares" type="number" min="0.000001" step="any" required /></div>

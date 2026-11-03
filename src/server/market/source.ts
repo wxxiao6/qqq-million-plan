@@ -4,6 +4,7 @@ export type FundNavRecord = {
   nav: number;
   dailyChangePct: number | null;
   sourceUrl: string;
+  recentHistory?: Array<{ navDate: string; nav: number; dailyChangePct: number | null }>;
 };
 
 export type FundNavSource = {

@@ -37,9 +37,12 @@ describe("D1 holdings page read", () => {
       db.pragma("journal_mode = DELETE");
       const cloud = new Database(db.serialize());
       const result = await readHoldingsManagementD1(binding(cloud));
+      const { HOLDING_FUNDS_SQL } = await import("../funds/personal");
+      const funds = db.prepare(HOLDING_FUNDS_SQL).all() as Array<{ code: string; name: string }>;
       const positions = ledger.listPositionDetails().filter((position) => position.exposure === "nasdaq");
       expect(result.positions).toEqual(positions);
-      expect(result.names).toEqual(ledger.listNasdaqHoldingNames());
+      expect(result.names).toEqual(Object.fromEntries(funds.map((fund) => [fund.code, fund.name])));
+      expect(result.pendingNames).toEqual(ledger.listNasdaqHoldingNames());
       expect(result.managers).toEqual(ledger.listNasdaqHoldingManagers());
       expect(result.plans).toEqual(listDcaPlans());
       cloud.close();

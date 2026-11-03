@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Check, ChevronDown, Loader2, Search } from "lucide-react";
 import { FormError } from "@/components/form-error";
 import {
   DCA_ACCOUNT_LABELS,
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -37,7 +38,6 @@ import {
   dcaChannelWarning,
   dcaChannelWarningLabel,
   defaultDcaAccount,
-  deriveNextDebitDate,
   isLegalDcaAccount,
   type DcaAccount,
   type DcaChannelKind,
@@ -47,7 +47,9 @@ import {
   type DcaPlanView,
   type DcaShareCandidate,
 } from "@/lib/dca";
-import { todayISO } from "@/lib/format";
+import { beijingTodayISO, todayISO } from "@/lib/format";
+import { previewDcaCreation, validateDcaCreation, type DcaCreationMode } from "@/lib/dca-creation";
+import { Money } from "@/components/money";
 import { notifySaved } from "@/lib/notify";
 import {
   deleteDcaPlan,
@@ -70,7 +72,6 @@ type DcaPlanDraft = {
   frequency: DcaFrequency;
   weekday: string;
   monthDay: string;
-  startDate: string;
   cutoffPeriod: "before_15" | "after_15";
   feeKind: DcaFeeKind | "none";
   feeValue: string;
@@ -126,17 +127,25 @@ export function DcaPlanForm({
   initial,
   triggerLabel,
   prominent = false,
+  managers = {},
+  existingPlans = [],
 }: {
   candidates: DcaShareCandidate[];
   emptyUniverse: boolean;
   initial?: DcaPlanView;
   triggerLabel?: string;
   prominent?: boolean;
+  managers?: Record<string, string>;
+  existingPlans?: DcaPlanView[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [creationMode, setCreationMode] = useState<DcaCreationMode>("now");
+  const [confirmedPreview, setConfirmedPreview] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const today = beijingTodayISO();
   const [channelKind, setChannelKind] = useState<DcaChannelKind>(
     initial?.channelKind ?? "agency",
   );
@@ -151,7 +160,7 @@ export function DcaPlanForm({
   );
   const [weekday, setWeekday] = useState(String(initial?.weekday ?? 3));
   const [monthDay, setMonthDay] = useState(String(initial?.monthDay ?? 8));
-  const [startDate, setStartDate] = useState(initial?.startDate ?? todayISO());
+  const [startDate, setStartDate] = useState(initial?.startDate ?? today);
   const [cutoffPeriod, setCutoffPeriod] = useState<"before_15" | "after_15">(initial?.cutoffPeriod ?? "before_15");
   const [amount, setAmount] = useState(
     initial?.amount != null ? String(initial.amount) : "",
@@ -166,6 +175,7 @@ export function DcaPlanForm({
   const [fundSearch, setFundSearch] = useState("");
   const [fundOpen, setFundOpen] = useState(false);
   const [fundActiveIndex, setFundActiveIndex] = useState(0);
+  const fundInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open || initial) return;
@@ -175,13 +185,12 @@ export function DcaPlanForm({
       frequency,
       weekday,
       monthDay,
-      startDate,
       cutoffPeriod,
       feeKind,
       feeValue,
       note,
     });
-  }, [account, channelKind, cutoffPeriod, feeKind, feeValue, frequency, initial, monthDay, note, open, startDate, weekday]);
+  }, [account, channelKind, cutoffPeriod, feeKind, feeValue, frequency, initial, monthDay, note, open, weekday]);
 
   const filtered = useMemo(
     () => candidatesForChannel(candidates, channelKind),
@@ -208,12 +217,13 @@ export function DcaPlanForm({
   const warning = selected ? dcaChannelWarning(cellStatus) : null;
   const warningText = dcaChannelWarningLabel(warning);
   const channelAccounts = accountsForChannel(channelKind);
-  const nextPlannedDate = deriveNextDebitDate({
-    frequency,
-    startDate,
-    weekday: Number(weekday),
-    monthDay: Number(monthDay),
-  });
+  // Existing plans retain their original start date; editing does not backfill it again.
+  const preview = previewDcaCreation({ frequency, startDate, weekday: Number(weekday), monthDay: Number(monthDay), amount: amount === "" ? NaN : Number(amount) }, initial ? startDate : today);
+  const previewKey = JSON.stringify([share, channelKind, account, frequency, weekday, monthDay, startDate, amount, cutoffPeriod, feeKind, feeValue, today]);
+  const previewConfirmed = confirmedPreview === previewKey;
+  const creationError = initial ? null : validateDcaCreation({ frequency, startDate, weekday: Number(weekday), monthDay: Number(monthDay), amount: Number(amount), creationMode, confirmedBackfill: preview.ok ? { count: preview.count, total: preview.total, through: today } : undefined }, today);
+  const duplicate = existingPlans.find((plan) => plan.id !== initial?.id && plan.status !== "ended" && plan.symbol === selected?.symbol && plan.account === account);
+  const invalid = !selected || !preview.ok || Boolean(creationError) || Boolean(duplicate) || (!initial && creationMode === "history" && preview.ok && preview.count > 0 && !previewConfirmed);
 
   function resetFromInitial() {
     const draft = initial ? null : readDraft<DcaPlanDraft>(DCA_PLAN_DRAFT_KEY);
@@ -224,8 +234,9 @@ export function DcaPlanForm({
     setFrequency(initial?.frequency ?? (isDcaFrequency(draft?.frequency) ? draft.frequency : "weekly"));
     setWeekday(initial ? String(initial.weekday ?? 3) : typeof draft?.weekday === "string" ? draft.weekday : "3");
     setMonthDay(initial ? String(initial.monthDay ?? 8) : typeof draft?.monthDay === "string" ? draft.monthDay : "8");
-    const start = initial?.startDate ?? (typeof draft?.startDate === "string" ? draft.startDate : todayISO());
+    const start = initial?.startDate ?? today;
     setStartDate(start);
+    setCreationMode("now"); setConfirmedPreview(null); setShowAdvanced(Boolean(initial?.note || initial?.feeKind));
     setCutoffPeriod(initial?.cutoffPeriod ?? (draft?.cutoffPeriod === "after_15" ? "after_15" : "before_15"));
     setAmount(initial?.amount != null ? String(initial.amount) : "");
     setFeeKind(initial?.feeKind ?? (isDcaFeeKind(draft?.feeKind) ? draft.feeKind : "none"));
@@ -258,6 +269,7 @@ export function DcaPlanForm({
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending || invalid) return;
     if (emptyUniverse) {
       setError("额度数据尚未生成，请稍后检查雷达");
       return;
@@ -287,6 +299,8 @@ export function DcaPlanForm({
         startDate,
         cutoffPeriod,
         note: String(data.get("note") ?? note),
+        creationMode: initial ? undefined : creationMode,
+        confirmedBackfill: !initial && creationMode === "history" && preview.ok && previewConfirmed ? { count: preview.count, total: preview.total, through: today } : undefined,
       });
       if (!result.ok) {
         setError(result.error);
@@ -295,6 +309,8 @@ export function DcaPlanForm({
       router.refresh();
       setOpen(false);
       notifySaved("定投计划已保存");
+    } catch {
+      setError("暂时无法保存，填写的内容已保留，请重试。");
     } finally {
       setPending(false);
     }
@@ -304,6 +320,7 @@ export function DcaPlanForm({
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        if (pending) return;
         setOpen(next);
         if (next) resetFromInitial();
       }}
@@ -312,75 +329,68 @@ export function DcaPlanForm({
         {prominent ? <Button type="button">{triggerLabel ?? "新增定投计划"}</Button> :
           <QuietButton>{triggerLabel ?? (initial ? "编辑定投计划" : "新增定投计划")}</QuietButton>}
       </DialogTrigger>
-      <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
-        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
-          <DialogHeader className="border-b border-border px-6 py-5 text-left sm:px-8">
-            <p className="text-xs font-semibold tracking-[.16em] text-copper">定投设置</p>
-            <DialogTitle className="text-2xl">{initial ? "编辑定投计划" : "新增定投计划"}</DialogTitle>
-            <p className="text-sm text-muted-foreground">先选基金与购买渠道，再设定每期投入和扣款节奏。同一购买平台和基金只能有一个未结束的定投计划。</p>
+      <DialogContent className="max-h-[90dvh] gap-0 overflow-hidden p-0 sm:max-w-xl" showCloseButton={!pending}>
+        <form onSubmit={onSubmit} className="flex max-h-[90dvh] min-h-0 flex-col" aria-busy={pending}>
+          <DialogHeader className="shrink-0 border-b border-border px-5 py-5 pr-12 text-left sm:px-6">
+            <DialogTitle>{initial ? "编辑定投计划" : "新增定投"}</DialogTitle>
+            <DialogDescription>选基金、填金额、设置节奏。到期自动记账，实际扣款以购买平台为准。</DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5 sm:px-8">
-          <FormError error={error} />
-          {emptyUniverse ? (
-            <p className="text-sm text-muted-foreground">
-              额度数据尚未生成，请稍后检查雷达。
-              <Link href="/quota" className="ml-1 font-medium text-copper">
-                查看纳指雷达
-              </Link>
-            </p>
-          ) : (
-            <>
-              <div className="grid gap-5 md:grid-cols-2">
-                <section className="self-start rounded-xl border border-border bg-background/55 p-4 sm:p-5" aria-labelledby={`dca-fund-heading-${initial?.id ?? "new"}`}>
-                  <div className="mb-4 flex items-center gap-3"><span className="grid size-7 place-items-center rounded-full bg-foreground text-xs font-semibold text-card">1</span><h3 id={`dca-fund-heading-${initial?.id ?? "new"}`} className="font-semibold">基金与购买渠道</h3></div>
-                  <div className="space-y-4">
-                    <div className="grid gap-2"><Label>购买渠道</Label><div className="grid grid-cols-2 gap-2" role="group" aria-label="购买渠道">
-                      {([ ["agency", "代销"], ["direct", "直销"] ] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={channelKind === value} onClick={() => onChannelChange(value)} className={`h-10 rounded-lg border text-sm font-medium transition-colors ${channelKind === value ? "border-foreground bg-foreground text-card" : "border-border bg-card hover:border-foreground/40"}`}>{label}</button>)}
-                    </div></div>
-                    <div className="grid gap-2"><Label>{channelKind === "direct" ? "基金公司" : "代销平台"}</Label><Select key={channelKind} value={account} onValueChange={(value) => setAccount(value as DcaAccount)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{channelAccounts.map((value) => <SelectItem key={value} value={value}>{DCA_ACCOUNT_LABELS[value]}</SelectItem>)}</SelectContent></Select>{initial ? <p className="text-xs text-muted-foreground">更换购买渠道或平台会同步调整该计划的历史记账与持仓记录。</p> : null}</div>
-                    <div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label htmlFor={`dca-fund-${initial?.id ?? "new"}`}>基金</Label><span className="text-xs text-muted-foreground">可选 {filtered.length} 只份额</span></div>
-                      <div className="relative" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFundOpen(false); }}>
-                        <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
-                        <Input id={`dca-fund-${initial?.id ?? "new"}`} role="combobox" aria-expanded={fundOpen} aria-controls={`dca-fund-options-${initial?.id ?? "new"}`} aria-activedescendant={fundOpen && matchingFunds.length ? `dca-fund-option-${initial?.id ?? "new"}-${fundActiveIndex}` : undefined} aria-autocomplete="list" value={fundOpen ? fundSearch : selected ? `${selected.symbol} · ${selected.name}` : fundSearch} onFocus={() => { setFundSearch(""); setFundOpen(true); }} onChange={(event) => { setFundSearch(event.target.value); setShare(""); setFundActiveIndex(0); setFundOpen(true); }} onKeyDown={(event) => {
-                          if (event.key === "Escape") setFundOpen(false);
-                          if (event.key === "ArrowDown") { event.preventDefault(); setFundActiveIndex((index) => Math.min(index + 1, matchingFunds.length - 1)); }
-                          if (event.key === "ArrowUp") { event.preventDefault(); setFundActiveIndex((index) => Math.max(index - 1, 0)); }
-                          if (event.key === "Enter" && fundOpen && matchingFunds.length) { event.preventDefault(); chooseFund(matchingFunds[fundActiveIndex]?.key ?? matchingFunds[0].key); }
-                        }} placeholder="搜索代码或名称" className="pl-9" />
-                        {fundOpen ? <div id={`dca-fund-options-${initial?.id ?? "new"}`} role="listbox" className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg">
-                          {matchingFunds.length ? matchingFunds.map((row, index) => <button id={`dca-fund-option-${initial?.id ?? "new"}-${index}`} type="button" role="option" aria-selected={index === fundActiveIndex} key={row.key} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseFund(row.key)} className={`block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted ${index === fundActiveIndex ? "bg-muted" : ""}`}><span className="font-mono font-semibold">{row.symbol}</span><span className="ml-2 text-xs text-copper">{row.shareClass}</span><span className="mt-0.5 block truncate text-xs text-muted-foreground">{row.name}</span></button>) : <p className="px-3 py-4 text-center text-sm text-muted-foreground">该渠道没有匹配的可申购基金</p>}
-                        </div> : null}
-                      </div>
-                      {filtered.length === 0 && !initial ? <p className="text-xs text-muted-foreground">该渠道暂无可申购且有额度的基金。</p> : null}
-                    </div>
-                    {selected ? <div className="rounded-lg bg-card px-3 py-2 text-xs"><span className="font-medium">{selected.shareClass} 类份额</span><span className="ml-2 text-muted-foreground">{cellStatus === "paused" ? "暂停申购" : cellStatus === "open" ? "开放申购，限额待核实" : selectedLimit != null ? `日限额 ¥${selectedLimit}` : "额度待核实"}</span></div> : null}
-                    {warningText ? <p className="text-xs text-loss">{warningText}{warning === "paused" ? "，可能无法扣款，建议调整渠道" : null}</p> : null}
-                  </div>
-                </section>
-                <section className="rounded-xl border border-border bg-background/55 p-4 sm:p-5" aria-labelledby={`dca-schedule-heading-${initial?.id ?? "new"}`}>
-                  <div className="mb-4 flex items-center gap-3"><span className="grid size-7 place-items-center rounded-full bg-foreground text-xs font-semibold text-card">2</span><h3 id={`dca-schedule-heading-${initial?.id ?? "new"}`} className="font-semibold">投入与扣款节奏</h3></div>
-                  <div className="space-y-4">
-                    <div className="grid gap-2"><Label htmlFor={`dca-amount-${initial?.id ?? "new"}`}>每期定投金额</Label><div className="relative"><span className="absolute left-3 top-2 text-lg font-semibold">¥</span><Input id={`dca-amount-${initial?.id ?? "new"}`} name="amount" type="number" min="0.01" step="any" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="例如 100" className="pl-8 font-mono text-lg" required /></div></div>
-                    <div className="grid grid-cols-2 gap-3"><div className="grid gap-2"><Label>频率</Label><Select value={frequency} onValueChange={(value) => setFrequency(value as DcaFrequency)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(DCA_FREQUENCY_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
-                      {frequency === "weekly" || frequency === "biweekly" ? <div className="grid gap-2"><Label>周几</Label><Select value={weekday} onValueChange={setWeekday}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(WEEKDAY_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div> : null}
-                      {frequency === "monthly" ? <div className="grid gap-2"><Label htmlFor={`dca-month-day-${initial?.id ?? "new"}`}>每月几号</Label><Input id={`dca-month-day-${initial?.id ?? "new"}`} type="number" min={1} max={28} value={monthDay} onChange={(event) => setMonthDay(event.target.value)} required /></div> : null}
-                    </div>
-                    {frequency === "daily" ? <p className="text-xs text-muted-foreground">每日按工作日安排，实际扣款日期以购买渠道为准。</p> : null}
-                    <div className="grid gap-2"><Label htmlFor={`dca-start-${initial?.id ?? "new"}`}>起始日</Label><Input id={`dca-start-${initial?.id ?? "new"}`} type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required /><p className="text-xs text-muted-foreground">首期计划日期：<span className="font-mono text-foreground">{nextPlannedDate}</span></p></div>
-                    <div className="grid gap-2"><Label>扣款受理时间</Label><Select value={cutoffPeriod} onValueChange={(value) => setCutoffPeriod(value as "before_15" | "after_15")}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="before_15">15:00 前</SelectItem><SelectItem value="after_15">15:00 后</SelectItem></SelectContent></Select></div>
-                    {!initial ? <p className="text-xs text-muted-foreground">保存后，将按计划补记起始日至今天已到期的记录。请核对购买渠道的实际扣款；本工具不会发起交易。</p> : null}
-                    <div className="grid gap-2"><Label>手续费（可选）</Label><div className="flex gap-2"><Select value={feeKind} onValueChange={(value) => { const next = value as DcaFeeKind | "none"; setFeeKind(next); if (next === "none") setFeeValue(""); }}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">不填</SelectItem>{Object.entries(DCA_FEE_KIND_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>{feeKind !== "none" ? <Input id={`dca-fee-${initial?.id ?? "new"}`} type="number" min="0" step="any" value={feeValue} onChange={(event) => setFeeValue(event.target.value)} placeholder={feeKind === "rate" ? "%" : "元"} className="w-28 shrink-0 font-mono" /> : null}</div></div>
-                    <div className="grid gap-2"><Label htmlFor={`dca-note-${initial?.id ?? "new"}`}>备注（可选）</Label><Input id={`dca-note-${initial?.id ?? "new"}`} name="note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如工资日后扣款" /></div>
-                  </div>
-                </section>
+          <div className="min-h-0 overflow-y-auto px-5 py-5 sm:px-6">
+          <fieldset disabled={pending} className="min-w-0 space-y-6">
+            {emptyUniverse ? <p className="text-sm text-muted-foreground">额度数据尚未生成，<Link href="/quota" className="text-copper underline">查看纳指雷达</Link>。</p> : <>
+            <section className="space-y-3" aria-labelledby={`dca-fund-heading-${initial?.id ?? "new"}`}>
+              <h3 id={`dca-fund-heading-${initial?.id ?? "new"}`} className="text-sm font-semibold"><span className="mr-2 font-mono text-xs text-copper">01</span>选择基金与购买平台</h3>
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="购买渠道">
+                {([["agency", "第三方平台", "支付宝、银行等"], ["direct", "基金公司直购", "基金公司 App / 官网"]] as const).map(([value, label, hint]) => <button key={value} type="button" aria-pressed={channelKind === value} onClick={() => onChannelChange(value)} className={`relative min-w-0 rounded-xl border px-3 py-3 text-left focus-visible:outline-2 focus-visible:outline-ring ${channelKind === value ? "border-copper bg-copper/5" : "border-border hover:bg-muted/40"}`}><span className="block pr-4 text-sm font-medium">{label}</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{hint}</span>{channelKind === value ? <Check className="absolute right-3 top-3.5 size-3.5 text-copper" aria-hidden="true" /> : null}</button>)}
               </div>
-            </>
-          )}
+              {channelKind === "agency" ? <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3"><Label htmlFor={`dca-platform-${initial?.id ?? "new"}`}>购买平台</Label><Select value={account} onValueChange={(value) => setAccount(value as DcaAccount)}><SelectTrigger id={`dca-platform-${initial?.id ?? "new"}`} className="h-11 w-full"><SelectValue /></SelectTrigger><SelectContent>{channelAccounts.map((value) => <SelectItem key={value} value={value}>{DCA_ACCOUNT_LABELS[value]}</SelectItem>)}</SelectContent></Select></div> : <p className="rounded-lg bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">{selected ? managers[selected.symbol] ?? "基金公司直购" : "选择基金后，自动匹配所属基金公司。"}</p>}
+              <div className="grid gap-2">
+                <Label htmlFor={`dca-fund-${initial?.id ?? "new"}`}>基金名称或代码</Label>
+                {selected && !fundOpen ? <div className="flex items-start gap-3 rounded-xl border border-copper/25 bg-copper/5 p-3.5"><Check className="mt-0.5 size-4 shrink-0 text-copper" aria-hidden="true" /><div className="min-w-0 flex-1"><p className="text-sm font-medium leading-relaxed">{selected.name}</p><p className="mt-1 font-mono text-xs text-muted-foreground">{selected.symbol} · {selected.shareClass} 类</p></div><button type="button" className="text-xs text-copper underline underline-offset-4" onClick={() => { setFundSearch(""); setFundOpen(true); setFundActiveIndex(0); requestAnimationFrame(() => fundInput.current?.focus()); }}>更换</button></div> : <div className="relative" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFundOpen(false); }}>
+                  <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-4 size-4 text-muted-foreground" />
+                  <Input ref={fundInput} id={`dca-fund-${initial?.id ?? "new"}`} role="combobox" aria-expanded={fundOpen} aria-controls={fundOpen ? `dca-fund-options-${initial?.id ?? "new"}` : undefined} aria-activedescendant={fundOpen && matchingFunds.length ? `dca-fund-option-${initial?.id ?? "new"}-${fundActiveIndex}` : undefined} aria-autocomplete="list" value={fundSearch} onFocus={() => { if (fundSearch) setFundOpen(true); }} onClick={() => setFundOpen(true)} onChange={(event) => { setFundSearch(event.target.value); setShare(""); setFundActiveIndex(0); setFundOpen(true); }} onKeyDown={(event) => {
+                    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setFundOpen(false); }
+                    if (event.key === "ArrowDown") { event.preventDefault(); setFundOpen(true); setFundActiveIndex((index) => Math.min(index + 1, Math.max(0, matchingFunds.length - 1))); }
+                    if (event.key === "ArrowUp") { event.preventDefault(); setFundActiveIndex((index) => Math.max(index - 1, 0)); }
+                    if (event.key === "Enter") { event.preventDefault(); if (fundOpen && matchingFunds.length) chooseFund(matchingFunds[fundActiveIndex]?.key ?? matchingFunds[0].key); }
+                  }} placeholder="搜索基金名称或代码" className="h-12 pl-9" />
+                  {fundOpen ? <div id={`dca-fund-options-${initial?.id ?? "new"}`} role="listbox" aria-label="基金搜索结果" className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg">{matchingFunds.length ? matchingFunds.map((row, index) => <button id={`dca-fund-option-${initial?.id ?? "new"}-${index}`} type="button" role="option" aria-selected={index === fundActiveIndex} key={row.key} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseFund(row.key)} className={`flex w-full gap-3 rounded-lg px-3 py-2 text-left text-sm ${index === fundActiveIndex ? "bg-muted" : "hover:bg-muted/70"}`}><span className="shrink-0 font-mono text-copper">{row.symbol}</span><span className="min-w-0">{row.name}</span></button>) : <p className="px-3 py-4 text-sm text-muted-foreground">该渠道没有匹配的可申购基金。</p>}</div> : null}
+                </div>}
+                {selected ? <p className="text-xs text-muted-foreground">{cellStatus === "paused" ? "暂停申购" : cellStatus === "open" ? "开放申购，限额待核实" : selectedLimit != null ? `参考日限额 ¥${selectedLimit}` : "额度待核实"}{warningText ? ` · ${warningText}` : ""}</p> : <p className="text-xs text-muted-foreground">可从当前渠道支持的基金中选择。</p>}
+                {duplicate ? <p role="status" className="rounded-lg bg-copper/5 p-3 text-xs leading-relaxed text-copper">这个平台已有该基金的{duplicate.status === "paused" ? "暂停" : "进行中"}计划，请取消后编辑或恢复原计划。</p> : null}
+                {initial ? <p className="text-xs leading-relaxed text-muted-foreground">更换购买渠道或平台会同步调整该计划的历史记账与持仓记录。</p> : null}
+              </div>
+            </section>
+            <section className="space-y-3" aria-labelledby={`dca-schedule-heading-${initial?.id ?? "new"}`}>
+              <h3 id={`dca-schedule-heading-${initial?.id ?? "new"}`} className="text-sm font-semibold"><span className="mr-2 font-mono text-xs text-copper">02</span>设置投入节奏</h3>
+              <div className="grid gap-2"><Label htmlFor={`dca-amount-${initial?.id ?? "new"}`}>每期投入（元）</Label><Input id={`dca-amount-${initial?.id ?? "new"}`} name="amount" type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="例如 100.00" className="h-12 font-mono text-lg" required /></div>
+              <div className="grid grid-cols-2 gap-3"><div className="grid gap-2"><Label htmlFor={`dca-frequency-${initial?.id ?? "new"}`}>投入频率</Label><Select value={frequency} onValueChange={(value) => setFrequency(value as DcaFrequency)}><SelectTrigger id={`dca-frequency-${initial?.id ?? "new"}`} className="h-11 w-full"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(DCA_FREQUENCY_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
+                {frequency === "weekly" || frequency === "biweekly" ? <div className="grid gap-2"><Label htmlFor={`dca-weekday-${initial?.id ?? "new"}`}>周几</Label><Select value={weekday} onValueChange={setWeekday}><SelectTrigger id={`dca-weekday-${initial?.id ?? "new"}`} className="h-11 w-full"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(WEEKDAY_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div> : null}
+                {frequency === "monthly" ? <div className="grid gap-2"><Label htmlFor={`dca-month-day-${initial?.id ?? "new"}`}>每月几号</Label><Input id={`dca-month-day-${initial?.id ?? "new"}`} type="number" min={1} max={28} step={1} value={monthDay} onChange={(event) => setMonthDay(event.target.value)} className="h-11" required /></div> : null}
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">{frequency === "daily" ? "每日按周一至周五安排；" : ""}节假日和实际扣款以购买平台为准。</p>
+            </section>
+            <section className="space-y-3" aria-labelledby={`dca-start-heading-${initial?.id ?? "new"}`}>
+              <h3 id={`dca-start-heading-${initial?.id ?? "new"}`} className="text-sm font-semibold"><span className="mr-2 font-mono text-xs text-copper">03</span>{initial ? "计划起始日期" : "从什么时候开始"}</h3>
+              {!initial ? <div className="grid grid-cols-2 gap-2" role="group" aria-label="录入方式">{([["now", "从现在开始", "今天起安排后续投入"], ["history", "补录已有定投", "按原计划补记历史投入"]] as const).map(([value, label, hint]) => <button key={value} type="button" aria-pressed={creationMode === value} onClick={() => { setCreationMode(value); setStartDate(today); setConfirmedPreview(null); }} className={`rounded-xl border px-3 py-3 text-left focus-visible:outline-2 focus-visible:outline-ring ${creationMode === value ? "border-copper bg-copper/5" : "border-border hover:bg-muted/40"}`}><span className="block text-sm font-medium">{label}</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{hint}</span></button>)}</div> : null}
+              <div className="grid gap-2"><Label htmlFor={`dca-start-${initial?.id ?? "new"}`}>{creationMode === "history" && !initial ? "补录起始日" : "起始日"}</Label><Input id={`dca-start-${initial?.id ?? "new"}`} type="date" min={!initial && creationMode === "now" ? today : undefined} max={!initial && creationMode === "history" ? today : undefined} value={startDate} onChange={(event) => setStartDate(event.target.value)} className="h-11" required /></div>
+              <div aria-live="polite" className="rounded-xl bg-muted/50 px-3.5 py-3 text-xs leading-relaxed">
+                {preview.ok ? <>{!initial ? <><p className="font-medium text-foreground">{creationMode === "history" ? <>将生成 {preview.count} 笔记账记录，合计 <Money value={preview.total} /></> : <>首期计划日 <span className="font-mono">{preview.firstDate}</span></>}</p><p className="mt-1 text-muted-foreground">{creationMode === "history" ? `${preview.historicalCount} 笔历史期次${preview.count > preview.historicalCount ? "，含今天 1 笔" : ""}；下一期 ${preview.nextDate}。` : preview.count ? "今天的期次将在保存后自动记账。" : "首期到期后自动记账。"} 自动记账金额按每期投入估算，含手续费，请对照平台核对。</p></> : <p className="text-muted-foreground">保存后按调整后的计划安排记账，历史记录保留。</p>}</> : <p className="text-muted-foreground">{preview.error}</p>}
+                {preview.ok && creationError ? <p role="alert" className="mt-1 text-loss">{creationError}</p> : null}
+              </div>
+              {!initial && creationMode === "history" && preview.ok && preview.count > 0 ? <label className="flex items-start gap-2.5 text-xs leading-relaxed"><input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--copper)]" checked={previewConfirmed} onChange={(event) => setConfirmedPreview(event.target.checked ? previewKey : null)} /><span>我已核对补录范围：截至 {today}，共 {preview.count} 笔、合计 <Money value={preview.total} />，与购买平台记录一致。</span></label> : null}
+            </section>
+            <div className="space-y-3"><button type="button" className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-expanded={showAdvanced} aria-controls={`dca-advanced-${initial?.id ?? "new"}`} onClick={() => setShowAdvanced(!showAdvanced)}><ChevronDown className={`size-3.5 ${showAdvanced ? "rotate-180" : ""}`} aria-hidden="true" />手续费、受理时间与备注（选填）</button>
+              <div id={`dca-advanced-${initial?.id ?? "new"}`} hidden={!showAdvanced} className="space-y-4 rounded-xl bg-muted/30 p-3.5">
+                <div className="grid gap-2"><Label htmlFor={`dca-cutoff-${initial?.id ?? "new"}`}>扣款受理时间</Label><Select value={cutoffPeriod} onValueChange={(value) => setCutoffPeriod(value as "before_15" | "after_15")}><SelectTrigger id={`dca-cutoff-${initial?.id ?? "new"}`} className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="before_15">15:00 前</SelectItem><SelectItem value="after_15">15:00 后</SelectItem></SelectContent></Select></div>
+                <div className="grid gap-2"><Label htmlFor={`dca-fee-kind-${initial?.id ?? "new"}`}>手续费</Label><div className="flex gap-2"><Select value={feeKind} onValueChange={(value) => { setFeeKind(value as DcaFeeKind | "none"); if (value === "none") setFeeValue(""); }}><SelectTrigger id={`dca-fee-kind-${initial?.id ?? "new"}`} className="min-w-0 flex-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">不填</SelectItem>{Object.entries(DCA_FEE_KIND_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>{feeKind !== "none" ? <Input id={`dca-fee-${initial?.id ?? "new"}`} aria-label={feeKind === "rate" ? "手续费率（%）" : "每期手续费（元）"} type="number" min="0" step="any" value={feeValue} onChange={(event) => setFeeValue(event.target.value)} placeholder={feeKind === "rate" ? "%" : "元"} className="w-28 shrink-0 font-mono" /> : null}</div></div>
+                <div className="grid gap-2"><Label htmlFor={`dca-note-${initial?.id ?? "new"}`}>备注</Label><Input id={`dca-note-${initial?.id ?? "new"}`} name="note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如工资日后扣款" /></div>
+              </div>
+            </div>
+            </>}
+          </fieldset>
           </div>
-          <DialogFooter className="flex-row items-center justify-between border-t border-border bg-card px-6 py-4 sm:px-8">
-            <p className="hidden text-xs text-muted-foreground sm:block">{selected ? `${selected.symbol} · ${channelKind === "direct" ? "直销" : "代销"}` : "选择基金后保存计划"}</p>
-            <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setOpen(false)}>取消</Button><Button type="submit" disabled={pending || emptyUniverse || !selected}>保存计划</Button></div>
-          </DialogFooter>
+          <div className="shrink-0 space-y-3 border-t border-border bg-card px-5 py-4 sm:px-6"><FormError error={error} /><DialogFooter className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 sm:flex"><p className="hidden flex-1 text-xs text-muted-foreground sm:block">{duplicate ? "请编辑已有计划" : !initial && creationMode === "history" ? "核对补录预览后保存" : "实际扣款以购买平台为准"}</p><Button type="button" variant="outline" className="h-11" disabled={pending} onClick={() => setOpen(false)}>取消</Button><Button type="submit" className="h-11" disabled={pending || emptyUniverse || invalid}>{pending ? <><Loader2 className="size-4 animate-spin" />保存中…</> : initial ? "保存修改" : creationMode === "history" ? "保存并补记" : "保存计划"}</Button></DialogFooter></div>
         </form>
       </DialogContent>
     </Dialog>

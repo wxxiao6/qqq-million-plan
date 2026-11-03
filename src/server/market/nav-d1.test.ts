@@ -54,6 +54,7 @@ describe("D1 NAV chunk", () => {
     db.prepare("INSERT INTO nav_snapshots (symbol,as_of,nav,source) VALUES ('016452','2026-10-28',3,'manual')").run();
     const d1 = binding(db);
     await saveNavChunkD1(d1, [record, { ...record, code: "021000" }], "tiantian", "2026-10-28T14:00:00Z");
+    expect(db.prepare("SELECT nav,nav_date FROM nasdaq_fund_observations WHERE code='016452'").get()).toEqual({ nav: 2, nav_date: "2026-10-28" });
     expect(db.prepare("SELECT nav FROM fund_nav_history WHERE code='016452' AND source='tiantian'").get()).toEqual({ nav: 2 });
     expect(db.prepare("SELECT nav,source FROM nav_snapshots WHERE symbol='016452' AND as_of='2026-10-28'").get()).toEqual({ nav: 3, source: "manual" });
     expect(db.prepare("SELECT COUNT(*) AS n FROM nav_snapshots WHERE symbol='021000'").get()).toEqual({ n: 0 });
@@ -74,7 +75,7 @@ describe("D1 NAV chunk", () => {
     const { getDb } = await import("../db");
     const source = { name: "tiantian", fetchNav: vi.fn(async (code: string) => { if (code === "021000") throw new Error("offline"); return { ...record, code, navDate: "2026-10-31" }; }) };
     const d1 = binding(getDb());
-    expect(await syncNavChunkD1(d1, { codes: ["016452", "021000"], observedAt: "2026-10-31T14:00:00Z" }, source)).toMatchObject({ requested: 2, success: 1, failed: [{ code: "021000", error: "offline" }] });
+    expect(await syncNavChunkD1(d1, { codes: ["016452", "021000"], observedAt: "2026-10-31T14:00:00Z" }, source)).toMatchObject({ requested: 2, success: 1, failed: [{ code: "021000", error: "净值暂时无法获取，稍后自动重试" }] });
     await expect(syncNavChunkD1(d1, { codes: Array.from({ length: 26 }, (_, i) => String(i)), observedAt: "2026-10-31" }, source)).rejects.toThrow("Too many funds");
   });
 });

@@ -3,8 +3,8 @@ import type { MarketD1 } from "./tiantian-d1";
 
 /** A bounded chunk stays below the Workers external subrequest limit. */
 export async function syncInfoChunkD1(db: MarketD1, input: { after: string; observedAt: string }, fetcher: typeof fetch = fetch) {
-  const query = db.prepare("SELECT code FROM nasdaq_funds WHERE code > ? ORDER BY code LIMIT 26").bind(input.after) as { all<T>(): Promise<{ results: T[] }> };
-  const rows = (await query.all<{ code: string }>()).results;
+  const [catalog] = await db.batch([db.prepare("SELECT code FROM nasdaq_funds WHERE code > ? ORDER BY code LIMIT 26").bind(input.after)]) as Array<{ results: unknown[] }>;
+  const rows = catalog.results as Array<{ code: string }>;
   const funds = rows.slice(0, 25);
   const settled: Array<PromiseSettledResult<Awaited<ReturnType<typeof fetchBiyingInfo>>>> = new Array(funds.length);
   let cursor = 0;

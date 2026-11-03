@@ -20,7 +20,7 @@ function duplicateMessage(rows: Array<{ status: string; dca_plan_id: number | nu
 export async function savePositionD1(db: ReconcileD1, input: PositionInput): Promise<Result> {
   if (!["alipay", "gf_direct", "cmb", "jd", "other"].includes(input.account)) return { ok: false, error: "账户不合法" };
   const exposure = input.exposure ?? "nasdaq";
-  if (!["nasdaq", "gold", "crypto"].includes(exposure)) return { ok: false, error: "敞口不合法" };
+  if (!["nasdaq", "fund", "gold", "crypto"].includes(exposure)) return { ok: false, error: "敞口不合法" };
   const symbol = input.symbol.trim();
   if (!symbol) return { ok: false, error: "基金代码不能为空" };
   if (!["settled", "pending"].includes(input.status)) return { ok: false, error: "状态不合法" };
@@ -31,20 +31,20 @@ export async function savePositionD1(db: ReconcileD1, input: PositionInput): Pro
   const bind = (sql: string, ...args: (string | number | null)[]) => db.prepare(sql).bind(...args);
   const [existingRows, duplicates] = await db.batch([
     bind(`SELECT status,dca_plan_id,account,symbol,exposure,(${ROW_SIGNATURE}) AS fingerprint FROM positions WHERE id=?`, id, id),
-    bind("SELECT status,dca_plan_id FROM positions WHERE exposure='nasdaq' AND account=? AND symbol=? AND status IN ('pending','settled')", input.account, symbol),
+    bind("SELECT status,dca_plan_id FROM positions WHERE exposure IN ('nasdaq','fund') AND account=? AND symbol=? AND status IN ('pending','settled')", input.account, symbol),
   ]);
   const existing = existingRows.results[0] as Existing | undefined;
   if (input.id && !existing) return { ok: false, error: "找不到持仓" };
   if (existing && (existing.status !== "settled" || existing.dca_plan_id != null)) return { ok: false, error: "请使用待确认处理操作；定投持仓不可在此改写" };
   const keyChanged = !existing || existing.account !== input.account || existing.symbol !== symbol || existing.exposure !== exposure;
-  if (exposure === "nasdaq" && keyChanged) {
+  if ((exposure === "nasdaq" || exposure === "fund") && keyChanged) {
     const message = duplicateMessage(duplicates.results as Array<{ status: string; dca_plan_id: number | null }>);
     if (message) return { ok: false, error: message };
   }
   const guard = bind(`INSERT INTO app_kv(key,value) SELECT '__position_guard__',NULL WHERE
     (?=1 AND (${ROW_SIGNATURE}) IS NOT ?) OR (?=1 AND EXISTS (SELECT 1 FROM positions
-      WHERE exposure='nasdaq' AND account=? AND symbol=? AND status IN ('pending','settled')))`,
-  existing ? 1 : 0, id, existing?.fingerprint ?? null, exposure === "nasdaq" && keyChanged ? 1 : 0, input.account, symbol);
+      WHERE exposure IN ('nasdaq','fund') AND account=? AND symbol=? AND status IN ('pending','settled')))`,
+  existing ? 1 : 0, id, existing?.fingerprint ?? null, (exposure === "nasdaq" || exposure === "fund") && keyChanged ? 1 : 0, input.account, symbol);
   const now = new Date().toISOString();
   const write = existing
     ? bind(`UPDATE positions SET account=?,exposure=?,symbol=?,shares=?,cost=?,status=?,note=?,updated_at=? WHERE id=?`,

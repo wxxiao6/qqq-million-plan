@@ -8,6 +8,7 @@ import type { ReconcileD1 } from "./reconcile-d1";
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), "position-d1-"));
 vi.stubEnv("P0_TEST_DB", path.join(tmp, "ledger.sqlite"));
+vi.mock("../auth/context", () => ({ requireUser: async () => ({ id: "test-owner" }) }));
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 
 function binding(db: Database.Database, beforeWrite?: () => void): ReconcileD1 {
@@ -51,6 +52,7 @@ describe("D1 positions", () => {
   it("rejects stale edits and concurrent duplicate creation", async () => {
     const { getDb } = await import("../db");
     const db = getDb();
+    db.pragma("journal_mode = DELETE");
     const cloud = new Database(db.serialize());
     const input = { account: "alipay" as const, symbol: "016452", shares: 1, cost: 1, status: "settled" as const };
     const outcomes = await Promise.all([savePositionD1(binding(cloud), input), savePositionD1(binding(cloud), input)]);

@@ -1,42 +1,36 @@
-"use client";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { ArrowLeft, ArrowUpRight, BriefcaseBusiness, CalendarDays, LockKeyhole, Radar } from "lucide-react";
+import { LoginForm } from "@/components/login-form";
+import { resolveLoginDestination } from "@/lib/auth-navigation";
+import { getCurrentUser } from "@/server/auth/context";
 
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+export default async function LoginPage({ searchParams }: {
+  searchParams: Promise<{ next?: string | string[] }>;
+}) {
+  const { next } = await searchParams;
+  const destination = resolveLoginDestination(next);
+  if (await getCurrentUser()) redirect(destination.href);
 
-export default function LoginPage() {
-  const router = useRouter();
-  const [setup, setSetup] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [setupToken, setSetupToken] = useState("");
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setMessage("");
-    try {
-      const response = await fetch(setup ? "/api/auth/setup" : "/api/auth/login", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(setup ? { email, password, setupToken } : { email, password }),
-      });
-      const result = await response.json() as { error?: string };
-      if (!response.ok) { setMessage(result.error ?? "操作失败"); return; }
-      router.replace("/holdings/manage"); router.refresh();
-    } catch { setMessage("网络错误，请稍后重试"); }
-    finally { setBusy(false); }
-  }
-
-  return <section className="mx-auto mt-12 w-full max-w-md rounded-2xl border border-border bg-card p-7 shadow-sm">
-    <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">QQQ MILLION PLAN</p>
-    <h1 className="mt-3 font-display text-3xl">{setup ? "初始化个人账号" : "登录"}</h1>
-    <p className="mt-2 text-sm text-muted-foreground">持仓和定投数据仅供你的账号使用。</p>
-    <form onSubmit={submit} className="mt-7 space-y-4">
-      <label className="block text-sm">账号<input required type="text" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2.5" /></label>
-      <label className="block text-sm">密码<input required type="password" minLength={setup ? 6 : 1} autoComplete={setup ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2.5" />{setup && <span className="mt-1 block text-xs text-muted-foreground">至少 6 个字符</span>}</label>
-      {setup && <label className="block text-sm">一次性初始化口令<input required type="password" autoComplete="off" value={setupToken} onChange={(e) => setSetupToken(e.target.value)} className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2.5" /></label>}
-      {message && <p role="alert" className="text-sm text-destructive">{message}</p>}
-      <button disabled={busy} className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? "请稍候…" : setup ? "创建账号并认领现有数据" : "登录"}</button>
-    </form>
-    <button type="button" onClick={() => { setSetup(!setup); setMessage(""); }} className="mt-4 text-sm text-muted-foreground underline underline-offset-4">{setup ? "已有账号？登录" : "首次使用？初始化账号"}</button>
-  </section>;
+  return (
+    <div className="mx-auto max-w-5xl py-2 sm:py-8 lg:py-12">
+      <Link href="/quota" className="inline-flex min-h-10 items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"><ArrowLeft className="size-4" aria-hidden="true" />返回纳指雷达</Link>
+      <div className="mt-6 grid items-center gap-10 lg:mt-10 lg:grid-cols-[1fr_1fr] lg:gap-20">
+        <section aria-labelledby="login-intro" className="order-2 lg:order-1">
+          <p className="font-mono text-[11px] tracking-[0.18em] text-copper">YOUR INVESTMENT WORKSPACE</p>
+          <h2 id="login-intro" className="mt-5 text-3xl font-semibold leading-[1.4] tracking-tight sm:text-4xl">每一笔积累，<br />都有迹可循。</h2>
+          <p className="mt-5 max-w-sm text-sm leading-7 text-muted-foreground">登录你的个人工作台，让持仓、收益与定投计划各归其位。</p>
+          <div className="mt-8 hidden space-y-5 sm:block">
+            <div className="flex items-start gap-3"><span className="rounded-xl bg-secondary p-2.5"><BriefcaseBusiness className="size-4 text-copper" aria-hidden="true" /></span><div><h2 className="text-sm font-medium">持仓一目了然</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">按基金和渠道，查看持仓与收益。</p></div></div>
+            <div className="flex items-start gap-3"><span className="rounded-xl bg-secondary p-2.5"><CalendarDays className="size-4 text-copper" aria-hidden="true" /></span><div><h2 className="text-sm font-medium">定投有序进行</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">管理投资计划，回看每一次执行。</p></div></div>
+          </div>
+          <Link href="/quota" className="mt-8 inline-flex items-center gap-2 border-t border-border pt-5 text-xs text-muted-foreground hover:text-foreground"><Radar className="size-4" aria-hidden="true" />只看基金行情？纳指雷达无需登录<ArrowUpRight className="size-3.5" aria-hidden="true" /></Link>
+        </section>
+        <section aria-labelledby="login-heading" className="order-1 rounded-3xl border border-border bg-card p-6 shadow-[0_12px_40px_rgba(70,52,36,0.05)] sm:p-8 lg:order-2">
+          <div className="mb-6 flex items-center gap-2 border-b border-border pb-5 text-xs text-muted-foreground"><LockKeyhole className="size-3.5 text-copper" aria-hidden="true" />持仓与定投需登录后使用</div>
+          <LoginForm destination={destination} />
+        </section>
+      </div>
+    </div>
+  );
 }

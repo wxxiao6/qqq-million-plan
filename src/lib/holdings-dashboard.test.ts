@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PositionDetail } from "@/server/ledger";
-import { filterHoldingPositions, groupHoldingChannels, groupNasdaqHoldings, summarizeNasdaqHoldings } from "./holdings-dashboard";
+import { filterHoldingPositions, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, summarizeNasdaqHoldings } from "./holdings-dashboard";
 
 function row(input: Partial<PositionDetail> & Pick<PositionDetail, "id" | "symbol" | "status">): PositionDetail {
   return {
@@ -43,6 +43,36 @@ describe("持仓管理汇总", () => {
     expect(channels).toHaveLength(2);
     expect(channels[0]).toMatchObject({ account: "alipay", settledPositions: expect.anything(), shares: 15, cost: 150, marketValue: 180, holdingPnl: 30, pendingCash: 0 });
     expect(channels[1]).toMatchObject({ account: "jd", settledPositions: [], pendingPositions: expect.anything(), shares: null, cost: 0, pendingCash: 40 });
+  });
+
+  it("持仓单价按已确认成本与总份额加权，待确认和失败记录不参与", () => {
+    const [channel] = groupHoldingChannels([
+      row({ id: 1, symbol: "016452", status: "settled", cost: 100, shares: 10 }),
+      row({ id: 2, symbol: "016452", status: "settled", cost: 100, shares: 5 }),
+      row({ id: 3, symbol: "016452", status: "pending", cost: 400, shares: null, cashDebited: 410, marketValue: null }),
+      row({ id: 4, symbol: "016452", status: "failed", cost: 900, shares: 900, cashDebited: 900 }),
+    ]);
+    expect(channel).toMatchObject({ cost: 200, shares: 15, pendingCash: 410 });
+    expect(channel.unitCost).toBeCloseTo(200 / 15);
+  });
+
+  it("未确认、缺份额或零份额时不显示误导性的持仓单价", () => {
+    for (const position of [
+      row({ id: 1, symbol: "016452", status: "pending", shares: null }),
+      row({ id: 2, symbol: "016452", status: "settled", shares: null }),
+      row({ id: 3, symbol: "016452", status: "settled", shares: 0 }),
+    ]) expect(groupHoldingChannels([position])[0].unitCost).toBeNull();
+  });
+
+  it("只有待确认资金时仍展示已知资产金额，不凭空估值缺失的净值", () => {
+    expect(marketValueIncludingPending(null, 40)).toBe(40);
+    expect(marketValueIncludingPending(120, 40)).toBe(160);
+    expect(marketValueIncludingPending(null, 0)).toBeNull();
+    const [channel] = groupHoldingChannels([
+      row({ id: 1, symbol: "016452", status: "pending", shares: null, cashDebited: 40, marketValue: null, holdingPnl: null, today: null }),
+    ]);
+    expect(channel).toMatchObject({ cost: 0, unitCost: null, shares: null, marketValue: null, holdingPnl: null, today: null });
+    expect(marketValueIncludingPending(channel.marketValue, channel.pendingCash)).toBe(40);
   });
 });
 

@@ -83,6 +83,7 @@ export function parseTiantianNav(code: string, value: unknown, sourceUrl: string
     nav: numberValue(row.DWJZ)!,
     dailyChangePct: numberValue(row.JZZZL),
     sourceUrl,
+    recentHistory: rows.slice(0, 3).map((item) => ({ navDate: item.FSRQ!, nav: numberValue(item.DWJZ)!, dailyChangePct: numberValue(item.JZZZL) })),
   };
 }
 

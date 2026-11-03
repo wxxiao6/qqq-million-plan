@@ -3,12 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "build:cloudflare": "opennextjs-cloudflare build"
+    "build:cloudflare": "opennextjs-cloudflare build",
+    "quota:run": "node scripts/quota-run.mjs",
+    "quota:upload": "node scripts/upload-quota.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",

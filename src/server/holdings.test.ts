@@ -7,6 +7,7 @@ const tmp = mkdtempSync(path.join(os.tmpdir(), "holdings-"));
 const dbPath = path.join(tmp, "ledger.sqlite");
 
 vi.stubEnv("P0_TEST_DB", dbPath);
+vi.mock("@/server/auth/context", () => ({ requireUser: async () => ({ id: "test-owner" }) }));
 vi.mock("next/cache", () => ({
   revalidatePath: () => undefined,
 }));
@@ -178,7 +179,7 @@ describe("动态仓资产类型", () => {
     expect(await savePosition({ account: "alipay", symbol: "016452", shares: null, cost: 50, status: "pending" })).toMatchObject({ ok: false });
     expect(await addPendingSubscription({ account: "alipay", symbol: "016452", executionOn: "2026-08-27", cutoffPeriod: "before_15", cashDebited: 50, feeAmount: 0 })).toEqual({ ok: true });
     expect(db.prepare("SELECT shares FROM positions WHERE symbol = '016452'").get()).toEqual({ shares: null });
-    expect(await savePosition({ account: "alipay", symbol: "016452", shares: null, cost: 50, status: "settled" })).toEqual({ ok: false, error: "请至少填写持仓总成本、持有份额、持仓成本单价中的两项" });
+    expect(await savePosition({ account: "alipay", symbol: "016452", shares: null, cost: 50, status: "settled" })).toEqual({ ok: false, error: "请至少填写持仓总成本、持有份额、持仓单价中的两项" });
   });
 
   it("京东代销持仓独立保存，直销账户关联基金公司", async () => {

@@ -5,8 +5,6 @@ import { seedNasdaqFundCatalog } from "./funds/catalog";
 import { beijingTodayISO } from "@/lib/format";
 
 const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH =
-  process.env.P0_TEST_DB ?? path.join(DATA_DIR, "ledger.sqlite");
 const MIGRATIONS_DIR = path.join(process.cwd(), "db", "migrations");
 const SNAPSHOT_PATH = path.join(process.cwd(), "config", "quota-snapshots.json");
 const NASDAQ_CATALOG_PATH = path.join(process.cwd(), "config", "nasdaq-funds.json");
@@ -15,7 +13,8 @@ let db: Database.Database | null = null;
 let seededCatalogMtime = 0;
 
 export function getDbPath() {
-  return DB_PATH;
+  // Resolve when opening the connection, after the test/runtime environment is set.
+  return process.env.P0_TEST_DB ?? path.join(DATA_DIR, "ledger.sqlite");
 }
 
 export function getDb(): Database.Database {
@@ -30,9 +29,10 @@ export function getDb(): Database.Database {
     return db;
   }
 
-  const dir = path.dirname(DB_PATH);
+  const dbPath = getDbPath();
+  const dir = path.dirname(dbPath);
   fs.mkdirSync(dir, { recursive: true });
-  db = new Database(DB_PATH);
+  db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   migrate(db);

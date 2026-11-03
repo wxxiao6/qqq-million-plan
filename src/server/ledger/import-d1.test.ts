@@ -7,6 +7,7 @@ import type { ReconcileD1 } from "./reconcile-d1";
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), "import-d1-"));
 vi.stubEnv("P0_TEST_DB", path.join(tmp, "ledger.sqlite"));
+vi.mock("@/server/auth/context", () => ({ requireUser: async () => ({ id: "test-owner" }) }));
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 let cloudBinding: ReconcileD1;
 vi.mock("@opennextjs/cloudflare", () => ({ getCloudflareContext: () => ({ env: { DB: cloudBinding } }) }));

@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import type { DcaExecutionInput, DcaInput } from "@/lib/dca";
+import { validateDcaCreation, type DcaCreationMode } from "@/lib/dca-creation";
+import { beijingTodayISO } from "@/lib/format";
 import { correctDcaExecutionD1, recordPlanExecutionD1, removeDcaPlanD1, setDcaPlanStatusD1 } from "./write-d1";
 import { createDcaPlanD1 } from "./create-d1";
 import { editDcaPlanD1 } from "./edit-d1";
@@ -37,8 +39,12 @@ async function cloudDatabase(): Promise<ReconcileD1> {
 }
 
 export async function saveDcaPlan(
-  input: DcaInput & { id?: number },
+  input: DcaInput & { id?: number; creationMode?: DcaCreationMode; confirmedBackfill?: { count: number; total: number; through: string } },
 ): Promise<ActionResult> {
+  if (!input.id) {
+    const error = validateDcaCreation(input, beijingTodayISO());
+    if (error) return { ok: false, error };
+  }
   if (process.env.CLOUDFLARE_RUNTIME === "1") return toAction(input.id
     ? await editDcaPlanD1(await cloudDatabase(), { ...input, id: input.id })
     : await createDcaPlanD1(await cloudDatabase(), input));

@@ -27,7 +27,7 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "qqq-million-plan",
+  title: "百万纳指计划",
   description: "个人财务工作台：资产、持仓、纳指额度与市场关注度。",
 };
 
@@ -43,7 +43,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full bg-background text-foreground" suppressHydrationWarning>
         <UiProviders>
-          <AppNav authenticated={Boolean(user)} />
+          <AppNav user={user ? { email: user.email } : null} />
           <main className="app-main mx-auto w-full max-w-7xl px-5 py-9 sm:px-8 lg:px-10 lg:py-14">
             {children}
           </main>
