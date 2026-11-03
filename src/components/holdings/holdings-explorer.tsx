@@ -14,7 +14,7 @@ import { filterHoldingPositions, groupHoldingChannels, groupNasdaqHoldings, mark
 import type { PositionDetail } from "@/server/ledger";
 import { filterBySalesChannel, type SalesChannelFilter } from "@/lib/sales-channel-filter";
 
-type SortOrder = "value" | "gain" | "symbol";
+type SortOrder = "value" | "gain" | "navDate" | "symbol";
 
 // 展示口径：收益日期按净值日顺延一个工作日，计算仍使用原净值日期。
 function incomeLabel(navDate: string | null): string {
@@ -32,6 +32,7 @@ export function HoldingsExplorer({ positions, names, managers, syncErrors = {} }
     const matching = filterBySalesChannel(filterHoldingPositions(positions.filter((position) => scope === "all" || position.exposure === scope), names, query, "all"), managers, channel, detail);
     const result = groupNasdaqHoldings(matching, names);
     result.sort((a, b) => sort === "symbol" ? a.symbol.localeCompare(b.symbol) :
+      sort === "navDate" ? (b.navAsOf ?? "").localeCompare(a.navAsOf ?? "") || a.symbol.localeCompare(b.symbol) :
       sort === "gain" ? (b.holdingPnl ?? Number.NEGATIVE_INFINITY) - (a.holdingPnl ?? Number.NEGATIVE_INFINITY) || a.symbol.localeCompare(b.symbol) :
         (b.marketValue ?? Number.NEGATIVE_INFINITY) - (a.marketValue ?? Number.NEGATIVE_INFINITY) || a.symbol.localeCompare(b.symbol));
     return result;
@@ -91,7 +92,7 @@ export function HoldingsExplorer({ positions, names, managers, syncErrors = {} }
         options={[{ value: "all", label: "全部基金" }, { value: "nasdaq", label: "纳指基金" }, { value: "fund", label: "其他基金" }]} />
       <SalesChannelFilters layout="toolbar" rows={positions} managers={managers} channel={channel} detail={detail} onChannelChange={(value) => { setChannel(value); setDetail("all"); }} onDetailChange={setDetail} />
       <FilterSelect<SortOrder> label="排序" value={sort} onValueChange={setSort} className="order-3 col-span-2 min-[480px]:col-span-1"
-        options={[{ value: "value", label: "市值从高到低" }, { value: "gain", label: "收益从高到低" }, { value: "symbol", label: "基金代码" }]} />
+        options={[{ value: "value", label: "市值从高到低" }, { value: "gain", label: "收益从高到低" }, { value: "navDate", label: "净值更新从新到旧" }, { value: "symbol", label: "基金代码" }]} />
       </div>
     </div>
 

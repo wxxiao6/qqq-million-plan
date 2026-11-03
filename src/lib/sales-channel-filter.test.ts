@@ -25,4 +25,19 @@ describe("渠道联动筛选", () => {
     expect(filterBySalesChannel(plans, managers, "direct", "甲基金")).toHaveLength(1);
     expect(filterBySalesChannel(plans, managers, "agency", "all")).toHaveLength(0);
   });
+
+  it("基金公司简称与全称合并为一个选项，筛选包含两种来源的持仓", () => {
+    const mixedManagers = { "001": " 广发基金 ", "002": "广发基金管理有限公司", "003": "南方基金管理股份有限公司" };
+    expect(salesDetails(rows, mixedManagers, "direct")).toEqual(["广发基金", "南方基金"]);
+    expect(filterBySalesChannel(rows, mixedManagers, "direct", "广发基金").map((row) => row.id)).toEqual([1, 2]);
+    expect(filterBySalesChannel(rows, mixedManagers, "direct", "广发基金管理有限公司").map((row) => row.id)).toEqual([1, 2]);
+    expect(filterBySalesChannel(rows, mixedManagers, "direct", "南方基金").map((row) => row.id)).toEqual([5]);
+    expect(salesDetails(rows, mixedManagers, "agency")).toEqual(["alipay", "jd"]);
+  });
+
+  it("兼容有限责任公司后缀，保留不同公司的名称和未知公司", () => {
+    const mixedManagers = { "001": "华夏基金管理有限责任公司", "002": "华泰柏瑞基金管理有限公司", "003": "  " };
+    expect(salesDetails(rows, mixedManagers, "direct")).toEqual(expect.arrayContaining(["华夏基金", "华泰柏瑞基金", UNKNOWN_SALES_DETAIL]));
+    expect(filterBySalesChannel(rows, mixedManagers, "direct", UNKNOWN_SALES_DETAIL).map((row) => row.id)).toEqual([5]);
+  });
 });
