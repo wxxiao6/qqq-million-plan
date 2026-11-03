@@ -2,13 +2,12 @@
 
 import { RefreshFundNav } from "./refresh-fund-nav";
 import { useId, useMemo, useState, useSyncExternalStore } from "react";
-import { ArrowUpRight, ChevronDown, Eye, EyeOff, RotateCcw, Search } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Eye, EyeOff, RotateCcw } from "lucide-react";
 import { Switch } from "radix-ui";
 import { PendingHoldingsDialog } from "./pending-holdings-dialog";
 import { DeletePositionButton, PositionForm } from "@/components/holdings/holdings-forms";
 import { accountLabel } from "@/components/labels";
-import { SalesChannelFilters } from "@/components/sales-channel-filter";
-import { FilterSelect } from "@/components/filter-select";
+import { HoldingsFilters } from "./holdings-filters";
 import { Money, Qty } from "@/components/money";
 import { filterHoldingPositions, fundIncomeDate, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, sortHoldingGroups, summarizeNasdaqHoldings, type HoldingChannelGroup, type HoldingGroup, type HoldingSortOrder } from "@/lib/holdings-dashboard";
 import type { PositionDetail } from "@/server/ledger";
@@ -129,34 +128,27 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncEr
         <p aria-live="polite" aria-atomic="true" className="text-sm text-muted-foreground">显示 <span className="font-mono text-foreground">{groups.length}</span> 只基金</p>
         <button type="button" onClick={resetFilters} disabled={!canReset}
           title="清空搜索，恢复全部基金、全部渠道和金额排序"
-          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground">
+          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-copper disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground">
           <RotateCcw className="size-3.5" aria-hidden="true" />恢复默认
         </button>
       </div>
     </div>
 
-    <div role="search" aria-label="持仓筛选" className="grid min-w-0 gap-3 rounded-xl border border-border bg-card/75 p-3">
-      <label className="relative block min-w-0">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-        <span className="sr-only">搜索基金名称或代码</span>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索基金名称或代码" className="h-10 w-full rounded-lg border border-input bg-card pl-9 pr-3 text-sm outline-none focus:border-copper" />
-      </label>
-      <div className="grid min-w-0 grid-cols-2 items-end gap-3 min-[480px]:grid-cols-3">
-      <FilterSelect label="范围" ariaLabel="持仓范围" value={scope} onValueChange={setScope} className="order-1"
-        options={[{ value: "all", label: "全部基金" }, { value: "nasdaq", label: "纳指基金" }, { value: "fund", label: "其他基金" }]} />
-      <SalesChannelFilters layout="toolbar" rows={positions} managers={managers} channel={channel} detail={detail} onChannelChange={(value) => { setChannel(value); setDetail("all"); }} onDetailChange={setDetail} />
-      <FilterSelect<HoldingSortOrder> label="排序" value={sort} onValueChange={setSort} className="order-3 col-span-2 min-[480px]:col-span-1"
-        options={[{ value: "gain", label: "持有收益排序" }, { value: "gainRate", label: "持有收益率排序" }, { value: "value", label: "金额排序" }, { value: "dayGain", label: "昨日收益排序" }, { value: "navDate", label: "更新时间排序" }]} />
-      </div>
-    </div>
+    <HoldingsFilters rows={positions} managers={managers} query={query} scope={scope} channel={channel} detail={detail} sort={sort}
+      onQueryChange={setQuery} onScopeChange={setScope} onChannelChange={(value) => { setChannel(value); setDetail("all"); }} onDetailChange={setDetail} onSortChange={setSort} />
 
+    <div id="holdings-results">
     {groups.length > 0 ? <div className="space-y-3">
       {groups.map((group) => <HoldingCard key={group.symbol} group={group} syncError={syncErrors[group.symbol]} fundOptions={names} fundManagers={managers} />)}
     </div> : <div className="rounded-2xl border border-dashed border-border bg-card/60 px-6 py-14 text-center">
       <p className="text-base font-medium">{positions.length ? "没有符合条件的持仓" : "还没有基金持仓"}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{positions.length ? "试试其他基金代码或渠道。" : "点击页面右上角的“新增持仓”开始记录。"}</p>
-      {positions.length ? <button type="button" onClick={resetFilters} className="mt-4 text-sm font-medium text-copper hover:underline">恢复默认</button> : null}
+      <p className="mt-1 text-sm text-muted-foreground">{positions.length ? "当前条件下没有匹配项，试试其他名称、代码或筛选条件。" : "点击页面右上角的“新增持仓”开始记录。"}</p>
+      {positions.length ? <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        {query ? <button type="button" onClick={() => setQuery("")} className="min-h-11 rounded-lg border border-border bg-card px-4 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-copper">仅清空搜索</button> : null}
+        <button type="button" onClick={resetFilters} className="min-h-11 rounded-lg px-4 text-sm font-medium text-copper outline-none hover:bg-copper/5 focus-visible:ring-2 focus-visible:ring-copper">恢复默认</button>
+      </div> : null}
     </div>}
+    </div>
   </section>
   </>;
 }
