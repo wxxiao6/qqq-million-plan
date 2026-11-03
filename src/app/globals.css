@@ -101,6 +101,13 @@
   .account-menu-item[data-highlighted] { background: var(--secondary); }
   .account-menu-item[aria-current="page"] { background: var(--secondary); font-weight: 500; }
   .app-main { min-height: calc(100vh - 4.75rem); }
+  .app-shell { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  .app-main { padding-bottom: max(2.25rem, env(safe-area-inset-bottom)); }
+  .pwa-update { bottom: max(1rem, env(safe-area-inset-bottom)); }
+  @media (display-mode: standalone) {
+    body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+    .app-shell { padding-left: 0; padding-right: 0; }
+  }
   .page-stack { display: flex; flex-direction: column; gap: 1.25rem; }
   .page-header { position: relative; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
   .page-header::before { content: ""; position: absolute; left: -1.15rem; top: .75rem; width: .38rem; height: 2.4rem; border-radius: 999px; background: var(--copper); }

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans, Newsreader } from "next/font/google";
 import { AppNav } from "@/components/app-nav";
@@ -29,6 +29,16 @@ const mono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "百万纳指计划",
   description: "个人财务工作台：资产、持仓、纳指额度与市场关注度。",
+  applicationName: "百万纳指计划",
+  appleWebApp: { capable: true, title: "百万纳指", statusBarStyle: "default" },
+  icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#f7f3ec",
 };
 
 export default async function RootLayout({
