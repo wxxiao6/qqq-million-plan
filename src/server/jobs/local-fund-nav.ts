@@ -5,7 +5,7 @@ import { tiantianNavSource } from "../market/tiantian";
 export { navPublicationSlot as localNavSlot } from "@/lib/job-schedule";
 import { navPublicationSlot as localNavSlot } from "@/lib/job-schedule";
 
-/** One persisted completion per 45-minute publication slot; failures retry next tick.
+/** One persisted completion per hourly publication slot; failures retry next tick.
  * The lease prevents concurrent Next.js processes from duplicating the job. */
 export async function runLocalNavTick(now = new Date(), database = getDb(), refresh = () => syncNasdaqFundNav(now, fetch, tiantianNavSource)) {
   const slot = localNavSlot(now);
