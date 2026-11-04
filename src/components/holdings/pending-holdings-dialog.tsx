@@ -30,7 +30,7 @@ export function PendingHoldingsDialog({ positions, names, managers, trigger }: {
     <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
       <DialogHeader className="shrink-0 border-b border-border px-5 py-5 pr-12 text-left sm:px-6 sm:pr-12">
         <DialogTitle>待确认申购</DialogTitle>
-        <DialogDescription>汇总当前筛选范围内的手动申购与定投。核对购买平台的确认结果后录入份额。</DialogDescription>
+        <DialogDescription>汇总当前筛选范围内的待确认申购。非 QDII 基金获取到对应成交净值后自动确认；其余可核对购买平台结果后处理。</DialogDescription>
       </DialogHeader>
       <div className="shrink-0 space-y-3 border-b border-border px-5 py-4 sm:px-6">
         <div className="grid grid-cols-2 gap-3">

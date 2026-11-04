@@ -3,15 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 import { localNavSlot, runLocalNavTick } from "./local-fund-nav";
 
 describe("local fund NAV publication windows", () => {
-  it("only uses Beijing evening half-hour slots", () => {
+  it("only uses Beijing evening 45-minute slots", () => {
     expect(localNavSlot(new Date("2026-11-03T00:00:00Z"))).toBeNull();
     expect(localNavSlot(new Date("2026-11-03T09:59:00Z"))).toBeNull();
     expect(localNavSlot(new Date("2026-11-03T10:00:00Z"))).toBe("2026-11-03:18:00");
-    expect(localNavSlot(new Date("2026-11-03T15:59:00Z"))).toBe("2026-11-03:23:30");
+    expect(localNavSlot(new Date("2026-11-03T10:44:00Z"))).toBe("2026-11-03:18:00");
+    expect(localNavSlot(new Date("2026-11-03T10:45:00Z"))).toBe("2026-11-03:18:45");
+    expect(localNavSlot(new Date("2026-11-03T11:30:00Z"))).toBe("2026-11-03:19:30");
+    expect(localNavSlot(new Date("2026-11-03T12:15:00Z"))).toBe("2026-11-03:20:15");
+    expect(localNavSlot(new Date("2026-11-03T15:59:00Z"))).toBe("2026-11-03:23:15");
     expect(localNavSlot(new Date("2026-11-03T16:00:00Z"))).toBeNull();
     expect(localNavSlot(new Date("2026-11-03T04:00:00Z"))).toBeNull();
-    expect(localNavSlot(new Date("2026-11-03T14:00:00Z"))).toBe("2026-11-03:22:00");
-    expect(localNavSlot(new Date("2026-11-03T15:00:00Z"))).toBe("2026-11-03:23:00");
+    expect(localNavSlot(new Date("2026-11-03T14:00:00Z"))).toBe("2026-11-03:21:45");
+    expect(localNavSlot(new Date("2026-11-03T15:00:00Z"))).toBe("2026-11-03:22:30");
   });
 
   it("retries failure, persists successful slots and excludes concurrent workers", async () => {

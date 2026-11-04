@@ -67,9 +67,9 @@ describe("D1 pending subscriptions", () => {
     cloud.close();
   });
 
-  it("backfills an existing ordinary fund, preserves its category and confirms shares on both runtimes", async () => {
+  it("confirms an ordinary fund immediately from cached NAV on both runtimes", async () => {
     const { getDb } = await import("../db");
-    const { createPendingSubscription, resolvePendingSubscription } = await import("./pending");
+    const { createPendingSubscription } = await import("./pending");
     const { listPositionDetails } = await import("./index");
     const db = getDb();
     db.prepare(`INSERT INTO funds(code,name,manager,currency,venue,is_nasdaq,source_url,updated_at)
@@ -82,17 +82,15 @@ describe("D1 pending subscriptions", () => {
       expect(actual).toEqual(createPendingSubscription(input));
       if (!actual.ok) throw new Error(actual.error);
       const sql = "SELECT exposure,symbol,status,shares,cost,cash_debited,fee_amount,order_origin FROM positions WHERE id=?";
-      const pending = { exposure: "fund", symbol: "008986", status: "pending", shares: null, cost: 499, cash_debited: 500, fee_amount: 1, order_origin: "manual" };
+      const pending = { exposure: "fund", symbol: "008986", status: "settled", shares: 226.82, cost: 499, cash_debited: 500, fee_amount: 1, order_origin: "manual" };
       for (const database of [db, cloud]) {
         expect(database.prepare(sql).get(actual.id)).toEqual(pending);
         expect(database.prepare("SELECT code FROM nasdaq_funds WHERE code='008986'").get()).toBeUndefined();
         expect(database.prepare("SELECT code FROM nav_sync_funds WHERE code='008986'").get()).toEqual({ code: "008986" });
       }
-      const confirm = { id: actual.id, outcome: "settled" as const, shares: 250, tDate: "2026-11-03", confirmedOn: "2026-11-04" };
-      expect(await resolvePendingSubscriptionD1(binding(cloud), confirm)).toEqual(resolvePendingSubscription(confirm));
-      expect(cloud.prepare(sql).get(actual.id)).toEqual({ ...pending, status: "settled", shares: 250 });
+      expect(await resolvePendingSubscriptionD1(binding(cloud), { id: actual.id, outcome: "settled" })).toMatchObject({ ok: false });
       expect(cloud.prepare(sql).get(actual.id)).toEqual(db.prepare(sql).get(actual.id));
-      expect(listPositionDetails().find((row) => row.id === actual.id)).toMatchObject({ exposure: "fund", marketValue: 550, holdingPnl: 51 });
+      expect(listPositionDetails().find((row) => row.id === actual.id)).toMatchObject({ exposure: "fund", marketValue: 499.004, holdingPnl: 0.004 });
     } finally { cloud.close(); }
   });
 

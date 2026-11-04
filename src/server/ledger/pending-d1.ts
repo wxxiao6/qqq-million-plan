@@ -1,3 +1,4 @@
+import { isQdiiFund } from "@/lib/holdings-dashboard";
 import { investedTotalDeltaSql } from "@/lib/sql-money";
 import { decimal, isMoneyAmount } from "@/lib/decimal";
 import { advanceDebitDate, roundDcaMoney, type DcaFrequency } from "@/lib/dca";
@@ -5,7 +6,7 @@ import { beijingTodayISO, isISODate } from "@/lib/format";
 import { portfolioSnapshotStatement } from "../market/nav-d1";
 import type { CutoffPeriod } from "./index";
 import type { PendingInput, PendingResult } from "./pending";
-import type { D1Statement, ReconcileD1 } from "./reconcile-d1";
+import { autoEstimateStatement, type D1Statement, type ReconcileD1 } from "./reconcile-d1";
 
 type Plan = { symbol: string; exposure: string; account: string | null; frequency: DcaFrequency; month_day: number | null; ended_at: string | null; updated_at: string };
 type ResolveInput = { id: number; outcome: "settled" | "failed" | "cancelled"; shares?: number; confirmedOn?: string; tDate?: string; executionOn?: string; cutoffPeriod?: CutoffPeriod };
@@ -24,11 +25,11 @@ export async function createPendingSubscriptionD1(db: ReconcileD1, input: Pendin
   if (planId != null && (!Number.isInteger(planId) || planId <= 0)) return { ok: false, error: "定投计划的基金或账户不一致" };
   const bind = (sql: string, ...values: (string | number | null)[]) => db.prepare(sql).bind(...values);
   const [funds, plans, duplicates] = await db.batch([
-    bind("SELECT is_nasdaq FROM funds WHERE code=? AND currency='CNY' AND venue='otc'", symbol),
+    bind("SELECT is_nasdaq,name,fund_type FROM funds WHERE code=? AND currency='CNY' AND venue='otc'", symbol),
     bind("SELECT symbol,exposure,account,frequency,month_day,ended_at,updated_at FROM dca_plans WHERE id=?", planId),
     bind("SELECT 1 FROM positions WHERE dca_plan_id=? AND execution_on=? AND status IN ('pending','settled') LIMIT 1", planId, input.executionOn),
   ]);
-  const fund = funds.results[0] as { is_nasdaq: number } | undefined;
+  const fund = funds.results[0] as { is_nasdaq: number; name: string; fund_type: string | null } | undefined;
   if (!fund) return { ok: false, error: "请选择已添加的人民币场外基金" };
   const exposure = fund.is_nasdaq ? "nasdaq" : "fund";
   const plan = plans.results[0] as Plan | undefined;
@@ -47,6 +48,7 @@ export async function createPendingSubscriptionD1(db: ReconcileD1, input: Pendin
   input.executionOn, input.executionOn, now, planId, input.cashDebited, input.feeAmount, input.cutoffPeriod, planId == null ? "manual" : "dca")];
   if (plan && planId != null) statements.push(bind(`UPDATE dca_plans SET invested_total=${investedTotalDeltaSql()},next_debit_date=?,updated_at=? WHERE id=?`,
     cost, advanceDebitDate({ frequency: plan.frequency, lastDue: input.executionOn, monthDay: plan.month_day }), now, planId));
+  if (!isQdiiFund(fund.name, fund.fund_type, !!fund.is_nasdaq)) statements.push(autoEstimateStatement(db, symbol, beijingTodayISO(), now));
   statements.push(portfolioSnapshotStatement(db, beijingTodayISO()) as D1Statement);
   try {
     const result = await db.batch(statements);

@@ -11,9 +11,9 @@ export default {
   },
   async scheduled(event, env) {
     const at = new Date(event.scheduledTime);
+    if (JOB_CRONS.nav.includes(event.cron)) return runCloudMarket(env.DB, env.JOBS_SELF, env.CLOUD_JOB_TOKEN, "nav", at);
     switch (event.cron) {
       case JOB_CRONS.dca: return runScheduledDca(env.DB, at);
-      case JOB_CRONS.nav: return runCloudMarket(env.DB, env.JOBS_SELF, env.CLOUD_JOB_TOKEN, "nav", at);
       case JOB_CRONS.info: return runCloudMarket(env.DB, env.JOBS_SELF, env.CLOUD_JOB_TOKEN, "info", at);
       case JOB_CRONS.quotaCheck: return checkQuotaReceipt(env.DB, at);
       default: throw new Error(`Unknown scheduled job: ${event.cron}`);

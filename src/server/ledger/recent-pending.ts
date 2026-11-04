@@ -1,3 +1,4 @@
+import { isQdiiFund } from "@/lib/holdings-dashboard";
 import { canAutoEstimateFundShares, estimateFundShares } from "@/lib/decimal";
 import { advanceDebitDate, calculateDcaFee, deriveNextDebitDate, type DcaFrequency, type DcaFeeKind } from '@/lib/dca';
 import { beijingTodayISO, isISODate } from '@/lib/format';
@@ -62,13 +63,18 @@ function recentHistory(symbol: string, today: string): Nav[] {
     WHERE symbol=? AND as_of<=? AND nav>0 ORDER BY as_of DESC LIMIT 3`).all(symbol, today) as Nav[];
 }
 
-/** 获取对应净值后估算份额并结转自动记账；人工申购仍需手动确认。 */
+/** 获取对应净值后结转自动记账及非 QDII 人工申购。 */
 export function updateAutoPendingEstimates(symbol: string, today = beijingTodayISO()) {
   const db = getDb();
   const history = recentHistory(symbol, today);
   if (!history.length) return;
+  const fund = db.prepare("SELECT name,fund_type,is_nasdaq,currency,venue FROM funds WHERE code=?").get(symbol) as
+    { name: string; fund_type: string | null; is_nasdaq: number; currency: string; venue: string } | undefined;
+  const ordinaryFund = fund && fund.currency === "CNY" && fund.venue === "otc" && !isQdiiFund(fund.name, fund.fund_type, !!fund.is_nasdaq);
   const rows = db.prepare(`SELECT id, cost, execution_on, cutoff_period, t_date, t_nav
-    FROM positions WHERE symbol=? AND status='pending' AND auto_generated=1`).all(symbol) as {
+    FROM positions WHERE symbol=? AND status='pending' AND (auto_generated=1 OR (?=1 AND exposure='fund'
+      AND execution_on IS NOT NULL AND cutoff_period IN ('before_15','after_15')))`)
+    .all(symbol, ordinaryFund ? 1 : 0) as {
     id: number; cost: number; execution_on: string; cutoff_period: CutoffPeriod; t_date: string | null; t_nav: number | null;
   }[];
   for (const row of rows) {

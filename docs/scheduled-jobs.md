@@ -7,10 +7,10 @@
 | 定投自动记账 | Cloudflare Cron | 每日 02:00 |
 | 官方额度采集与校验 | 本机 Codex 自动化 `nasdaq-quota-ai-ingestion` | 每日 06:00 一次 |
 | 额度回执巡检 | Cloudflare Cron | 每日 07:00，仅检查接收情况 |
-| 基金净值 | Cloudflare Cron | 18:00–23:30，每半小时一次 |
+| 基金净值 | Cloudflare Cron | 18:00–24:00，每 45 分钟一次（末次 23:15） |
 | 基金概况 | Cloudflare Cron | 每周一 01:00 |
 
-净值任务在其他时段不会自动补查。失败等到下一个晚间周期重试；本地开发服务使用相同半小时窗口。用户主动刷新不受此定时窗口限制。原 Mac LaunchAgent 已停用，其 plist 备份在忽略提交的 `data/backups/scheduled-jobs-20261103/`；兼容脚本只打印停用说明，不读取凭证、不再请求云端。
+净值任务在其他时段不会自动补查。失败等到下一个晚间周期重试；本地开发服务使用相同 45 分钟窗口。用户主动刷新不受此定时窗口限制。原 Mac LaunchAgent 已停用，其 plist 备份在忽略提交的 `data/backups/scheduled-jobs-20261103/`；兼容脚本只打印停用说明，不读取凭证、不再请求云端。
 
 ## 额度采集与上传
 

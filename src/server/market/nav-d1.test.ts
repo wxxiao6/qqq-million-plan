@@ -45,6 +45,50 @@ describe("D1 NAV chunk", () => {
     db.prepare("DELETE FROM nav_snapshots WHERE symbol='021000'").run();
     db.prepare("DELETE FROM fund_nav_history WHERE code='021000'").run();
   });
+  it("confirms non-QDII pending cash regardless of origin and respects cutoff dates on both runtimes", async () => {
+    const { getDb } = await import("../db");
+    const { updateAutoPendingEstimates } = await import("../ledger/recent-pending");
+    const db = getDb();
+    db.prepare(`INSERT INTO funds(code,name,fund_type,currency,venue,is_nasdaq,source_url,updated_at) VALUES
+      ('008986','广发上海金ETF联接A','黄金','CNY','otc',0,'source','2026-11-04'),
+      ('999991','海外基金(QDII)A',NULL,'CNY','otc',0,'source','2026-11-04'),
+      ('999992','全球指数','qdii-股票','CNY','otc',0,'source','2026-11-04')`).run();
+    const insert = db.prepare(`INSERT INTO positions(account,exposure,symbol,cost,cash_debited,fee_amount,status,
+      execution_on,cutoff_period,auto_generated,order_origin,updated_at)
+      VALUES('gf_direct','fund',?,499,500,1,'pending',?,?,?,?,'2026-11-04')`);
+    insert.run('008986','2026-11-02','before_15',0,'manual');
+    insert.run('008986','2026-11-02','before_15',1,'dca');
+    insert.run('008986','2026-11-02','after_15',0,'manual');
+    insert.run('008986','2026-11-03','after_15',0,'manual');
+    insert.run('008986','2026-11-01','before_15',0,'manual'); // Incomplete history: no invented T day.
+    insert.run('008986',null,null,0,'manual');
+    insert.run('999991','2026-11-02','before_15',0,'manual');
+    insert.run('999992','2026-11-02','before_15',0,'manual');
+    const cloud = new Database(db.serialize());
+    const records = ['008986','999991','999992'].map((code) => ({ ...record, code, navDate: '2026-11-03', nav: 4,
+      recentHistory: [
+        { navDate: '2026-11-03', nav: 4, dailyChangePct: null },
+        { navDate: '2026-11-02', nav: 2, dailyChangePct: null },
+      ] }));
+    try {
+      await saveNavChunkD1(binding(cloud), records, 'tiantian', '2026-11-04T06:00:00Z');
+      for (const item of records) {
+        for (const nav of item.recentHistory) db.prepare("INSERT INTO nav_snapshots(symbol,as_of,nav,source) VALUES (?,?,?,'tiantian')").run(item.code,nav.navDate,nav.nav);
+        updateAutoPendingEstimates(item.code, '2026-11-04');
+      }
+      const sql = "SELECT status,shares,t_date,t_nav,cost,cash_debited,fee_amount,auto_generated,order_origin FROM positions ORDER BY id";
+      expect(cloud.prepare(sql).all()).toEqual(db.prepare(sql).all());
+      expect(cloud.prepare("SELECT status,shares,t_date FROM positions ORDER BY id").all()).toEqual([
+        { status: 'settled', shares: 249.5, t_date: '2026-11-02' },
+        { status: 'settled', shares: 249.5, t_date: '2026-11-02' },
+        { status: 'settled', shares: 124.75, t_date: '2026-11-03' },
+        ...Array.from({ length: 5 }, () => ({ status: 'pending', shares: null, t_date: null })),
+      ]);
+      await saveNavChunkD1(binding(cloud), records, 'tiantian', '2026-11-04T06:30:00Z');
+      expect(cloud.prepare(sql).all()).toEqual(db.prepare(sql).all());
+    } finally { cloud.close(); }
+  });
+
   it("saves history and held snapshots, preserves manual NAV, and does not create unheld snapshots", async () => {
     const { getDb } = await import("../db");
     const db = getDb();

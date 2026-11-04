@@ -1,5 +1,5 @@
 import { saveRecentNavHistory } from "../ledger/recent-pending";
-/** 任务 B：写入净值并重算估值；手工在途按实际确认份额结转，自动订单估算规则见 docs/dca-pending-rules.md。 */
+/** 任务 B：写入净值并重算估值；待确认申购的净值匹配及结转规则见 docs/dca-pending-rules.md。 */
 
 import { beijingTodayISO } from "@/lib/format";
 import type { NasdaqShareSituation } from "@/lib/market";

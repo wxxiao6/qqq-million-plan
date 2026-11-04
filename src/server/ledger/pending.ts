@@ -1,3 +1,5 @@
+import { isQdiiFund } from "@/lib/holdings-dashboard";
+import { updateAutoPendingEstimates } from "./recent-pending";
 import { investedTotalDeltaSql } from "@/lib/sql-money";
 import { decimal, isMoneyAmount } from "@/lib/decimal";
 import { isISODate } from "@/lib/format";
@@ -27,7 +29,7 @@ export function createPendingSubscription(input: PendingInput): PendingResult {
   if (!isMoneyAmount(input.cashDebited) || !isMoneyAmount(input.feeAmount)) return { ok: false, error: "扣款金额和手续费最多保留两位小数" };
   const symbol = input.symbol.trim();
   if (!symbol) return { ok: false, error: "请选择基金" };
-  const fund = db.prepare("SELECT is_nasdaq FROM funds WHERE code = ? AND currency = 'CNY' AND venue = 'otc'").get(symbol) as { is_nasdaq: number } | undefined;
+  const fund = db.prepare("SELECT is_nasdaq,name,fund_type FROM funds WHERE code = ? AND currency = 'CNY' AND venue = 'otc'").get(symbol) as { is_nasdaq: number; name: string; fund_type: string | null } | undefined;
   if (!fund) return { ok: false, error: "请选择已添加的人民币场外基金" };
   const exposure = fund.is_nasdaq ? "nasdaq" : "fund";
 
@@ -54,6 +56,7 @@ export function createPendingSubscription(input: PendingInput): PendingResult {
         db.prepare(`UPDATE dca_plans SET invested_total = ${investedTotalDeltaSql()}, next_debit_date = ?, updated_at = ? WHERE id = ?`)
           .run(cost, advanceDebitDate({ frequency: plan.frequency, lastDue: input.executionOn, monthDay: plan.month_day }), now, input.dcaPlanId);
       }
+      if (!isQdiiFund(fund.name, fund.fund_type, !!fund.is_nasdaq)) updateAutoPendingEstimates(symbol);
       return Number(result.lastInsertRowid);
     })();
     return { ok: true, id };

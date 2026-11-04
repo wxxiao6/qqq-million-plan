@@ -125,7 +125,7 @@ export async function reconcileDueDcaPlansD1(db: ReconcileD1, today = beijingTod
   return errors;
 }
 
-/** Recalculate all automatic pending lots for a symbol inside the caller's batch. */
+/** Confirm automatic lots and non-QDII subscriptions once their matching NAV exists. */
 export function autoEstimateStatement(db: ReconcileD1, symbol: string, today: string, now: string): D1Statement {
   // Integer long division computes cents * 10^8 / NAV-units without a large
   // intermediate product or a binary-floating half-cent tie. Eight steps keep
@@ -137,7 +137,12 @@ export function autoEstimateStatement(db: ReconcileD1, symbol: string, today: st
         CASE WHEN p.t_date IS NOT NULL AND p.t_date<>'' AND p.t_nav IS NOT NULL AND p.t_nav<>0 THEN p.t_date
           WHEN p.execution_on < (SELECT MIN(as_of) FROM history) THEN NULL
           ELSE (SELECT MIN(as_of) FROM history WHERE CASE WHEN p.cutoff_period='after_15' THEN as_of>p.execution_on ELSE as_of>=p.execution_on END) END AS selected_date
-      FROM positions p WHERE p.symbol=? AND p.status='pending' AND p.auto_generated=1 AND EXISTS (SELECT 1 FROM history)
+      FROM positions p WHERE p.symbol=? AND p.status='pending'
+        AND (p.auto_generated=1 OR (p.exposure='fund'
+          AND p.execution_on IS NOT NULL AND p.cutoff_period IN ('before_15','after_15')
+          AND EXISTS (SELECT 1 FROM funds f WHERE f.code=p.symbol AND f.currency='CNY' AND f.venue='otc'
+            AND f.is_nasdaq=0 AND UPPER(f.name || ' ' || COALESCE(f.fund_type,'')) NOT LIKE '%QDII%')))
+        AND EXISTS (SELECT 1 FROM history)
     ), resolved AS MATERIALIZED (
       SELECT chosen.*, COALESCE((SELECT nav FROM history WHERE as_of=selected_date),
         CASE WHEN selected_date=t_date THEN t_nav END) AS selected_nav
