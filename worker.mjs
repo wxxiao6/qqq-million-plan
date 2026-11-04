@@ -2,7 +2,7 @@ import handler from "./.open-next/worker.js";
 import { runScheduledDca } from "./src/server/jobs/scheduled-dca.ts";
 import { handleMarketJob, MARKET_JOB_PATH, runCloudMarket } from "./src/server/jobs/cloud-market.ts";
 import { checkQuotaReceipt } from "./src/server/jobs/quota-status.ts";
-import { JOB_CRONS } from "./src/lib/job-schedule.ts";
+import { JOB_CRONS, isNavRefreshDue } from "./src/lib/job-schedule.ts";
 
 export default {
   fetch(request, env, ctx) {
@@ -11,7 +11,10 @@ export default {
   },
   async scheduled(event, env) {
     const at = new Date(event.scheduledTime);
-    if (JOB_CRONS.nav.includes(event.cron)) return runCloudMarket(env.DB, env.JOBS_SELF, env.CLOUD_JOB_TOKEN, "nav", at);
+    if (event.cron === JOB_CRONS.nav) {
+      if (!isNavRefreshDue(at)) return;
+      return runCloudMarket(env.DB, env.JOBS_SELF, env.CLOUD_JOB_TOKEN, "nav", at);
+    }
     switch (event.cron) {
       case JOB_CRONS.dca: return runScheduledDca(env.DB, at);
       case JOB_CRONS.info: return runCloudMarket(env.DB, env.JOBS_SELF, env.CLOUD_JOB_TOKEN, "info", at);

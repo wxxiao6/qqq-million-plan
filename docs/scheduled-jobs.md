@@ -37,6 +37,8 @@ pnpm quota:upload /absolute/run-directory/payload.json
 
 Wrangler 的 cron 为 UTC；周日 17:00 UTC 对应北京时间周一 01:00。使用 SUN 避免 Quartz 的星期编号与传统 cron 不一致。
 
+为满足免费账户最多 5 个 Cron 触发器的限制，净值使用一个每 15 分钟触发的 Cron，由 Worker 仅在 18:00 起每隔 45 分钟的时刻执行刷新，其余触发直接返回。
+
 净值每批四只基金，概况每批二十五只，经 JOBS_SELF Service Binding 调用独立 Worker invocation。每个净值批次保留抓取前后的日期比较，分别记录净值日期前进、未变化、失败；成功抓取旧净值不等于净值已更新。按 job/slot 原子抢占、成功去重，20 分钟过期的运行可重试；分批异常和快照异常均落失败/部分成功状态。
 
 当前约 88 只基金需 22 个净值批次。单个 cron 最多执行 30 批，预留初始及快照 invocation，避免超过 Service Binding 的 32 次调用限制；超过 120 只同步基金时需要进一步分区或迁移队列，任务会明确失败，不会伪报全部完成。每个内部请求有三分钟超时，整体处理预算十分钟。Free 套餐 CPU/查询额度仍需结合 Cloudflare 日志监测。
