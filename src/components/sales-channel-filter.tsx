@@ -19,8 +19,8 @@ export function SalesChannelFilters({ rows, managers, channel, detail, onChannel
     <FilterSelect<SalesChannelFilter> label="渠道" value={channel} onValueChange={onChannelChange}
       className={toolbar ? "order-2" : "flex shrink-0 items-center gap-2"} triggerClassName={toolbar ? undefined : "w-28"}
       options={[{ value: "all", label: "全部渠道" }, { value: "direct", label: "直销" }, { value: "agency", label: "代销" }]} />
-    {channel !== "all" ? <FilterSelect label={channel === "direct" ? "基金公司" : "代销平台"} value={detail} onValueChange={onDetailChange}
+    {channel !== "all" ? <FilterSelect label={channel === "direct" ? "基金公司" : "账户"} value={detail} onValueChange={onDetailChange}
       className={toolbar ? "order-4 col-span-2 min-[480px]:col-span-3" : "flex max-w-full items-center gap-2"} triggerClassName={toolbar ? undefined : "w-48 max-w-full"}
-      options={[{ value: "all", label: "全部" }, ...options.map((value) => ({ value, label: value === UNKNOWN_SALES_DETAIL ? (channel === "direct" ? "基金公司待核实" : "平台待核实") : channel === "direct" ? value : accountLabel(value) }))]} /> : null}
+      options={[{ value: "all", label: "全部" }, ...options.map((value) => ({ value, label: value === UNKNOWN_SALES_DETAIL ? (channel === "direct" ? "基金公司待核实" : "账户待核实") : channel === "direct" ? value : accountLabel(value) }))]} /> : null}
   </div>;
 }

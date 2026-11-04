@@ -1,13 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { isolatedLedger } from "@/test/isolated-ledger";
 import Database from "better-sqlite3";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createPendingSubscriptionD1, resolvePendingSubscriptionD1 } from "./pending-d1";
 import type { ReconcileD1 } from "./reconcile-d1";
 
-const tmp = mkdtempSync(path.join(os.tmpdir(), "pending-d1-"));
-vi.stubEnv("P0_TEST_DB", path.join(tmp, "ledger.sqlite"));
+isolatedLedger();
 function binding(db: Database.Database): ReconcileD1 {
   return {
     prepare(sql) { return { bind(...values) { return { sql, values } as unknown as ReturnType<ReconcileD1["prepare"]>; } }; },
@@ -30,7 +27,7 @@ describe("D1 pending subscriptions", () => {
       const db = getDb();
       const plan = upsertDcaPlan({ symbol: "019547", shareClass: "A", channelKind: "agency", account: "alipay", amount: 10, frequency: "daily", startDate: "2026-10-28" });
       if (!plan.ok) throw new Error(plan.error);
-      db.pragma("journal_mode = DELETE");
+
       const cloud = new Database(db.serialize());
       const input = { symbol: "019547", account: "alipay" as const, dcaPlanId: plan.id, executionOn: "2026-10-28", cutoffPeriod: "after_15" as const, cashDebited: 10, feeAmount: 1 };
       const actual = await createPendingSubscriptionD1(binding(cloud), input);
@@ -50,8 +47,15 @@ describe("D1 pending subscriptions", () => {
 
   it("handles concurrent linked creation and rolls back totals on cancellation", async () => {
     const { getDb } = await import("../db");
-    const db = getDb(); const cloud = new Database(db.serialize());
-    const plan = cloud.prepare("SELECT id FROM dca_plans LIMIT 1").get() as { id: number };
+    const db = getDb();
+    const { upsertDcaPlan } = await import("../dca");
+    const { createPendingSubscription, resolvePendingSubscription } = await import("./pending");
+    const plan = upsertDcaPlan({ symbol: "019547", shareClass: "A", channelKind: "agency", account: "alipay", amount: 10, frequency: "daily", startDate: "2026-10-28" });
+    if (!plan.ok) throw new Error(plan.error);
+    const previous = createPendingSubscription({ symbol: "019547", account: "alipay", dcaPlanId: plan.id, executionOn: "2026-10-28", cutoffPeriod: "after_15", cashDebited: 10, feeAmount: 1 });
+    if (!previous.ok) throw new Error(previous.error);
+    expect(resolvePendingSubscription({ id: previous.id, outcome: "settled", shares: 5, tDate: "2026-10-29", confirmedOn: "2026-10-29" }).ok).toBe(true);
+    const cloud = new Database(db.serialize());
     const input = { symbol: "019547", account: "alipay" as const, dcaPlanId: plan.id, executionOn: "2026-10-30", cutoffPeriod: "before_15" as const, cashDebited: 10, feeAmount: 0 };
     const results = await Promise.all([createPendingSubscriptionD1(binding(cloud), input), createPendingSubscriptionD1(binding(cloud), input)]);
     const success = results.filter((result) => result.ok);
@@ -99,6 +103,10 @@ describe("D1 pending subscriptions", () => {
     db.prepare(`INSERT INTO funds(code,name,currency,venue,is_nasdaq,source_url,updated_at) VALUES
       ('999991','美元基金','USD','otc',0,'source','2026-11-03'),
       ('999992','场内基金','CNY','exchange',0,'source','2026-11-03')`).run();
+    const { upsertDcaPlan } = await import("../dca");
+    const plan = upsertDcaPlan({ symbol: "019547", shareClass: "A", channelKind: "agency", account: "alipay", amount: 10, frequency: "daily", startDate: "2026-10-28" });
+    if (!plan.ok) throw new Error(plan.error);
+    db.prepare("INSERT INTO funds(code,name,currency,venue,is_nasdaq,source_url,updated_at) VALUES('008986','上海金','CNY','otc',0,'source','2026-11-03')").run();
     const cloud = new Database(db.serialize());
     try {
       for (const symbol of ["999991", "999992", "999993"]) {
@@ -108,12 +116,9 @@ describe("D1 pending subscriptions", () => {
         expect(createPendingSubscription(input)).toEqual(error);
         for (const database of [db, cloud]) expect(database.prepare("SELECT id FROM positions WHERE symbol=?").get(symbol)).toBeUndefined();
       }
-      const plan = db.prepare("SELECT id FROM dca_plans LIMIT 1").get() as { id: number };
       const mismatched = { symbol: "008986", account: "alipay" as const, dcaPlanId: plan.id, executionOn: "2026-11-03", cutoffPeriod: "before_15" as const, cashDebited: 500, feeAmount: 0 };
       expect(await createPendingSubscriptionD1(binding(cloud), mismatched)).toEqual(createPendingSubscription(mismatched));
       expect(createPendingSubscription(mismatched)).toMatchObject({ ok: false });
     } finally { cloud.close(); }
   });
 });
-
-afterAll(() => rmSync(tmp, { recursive: true, force: true }));

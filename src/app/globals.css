@@ -3,6 +3,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@layer base {
+  :where(button, a[href], summary, select, label[for], [role="button"], [role="combobox"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], input[type="button"], input[type="submit"], input[type="reset"], input[type="checkbox"], input[type="radio"]):not(:disabled):not([aria-disabled="true"]):not([data-disabled]) {
+    cursor: pointer;
+  }
+  :where(button, select, input, [role="button"], [role="combobox"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"]):is(:disabled, [aria-disabled="true"], [data-disabled]) {
+    cursor: not-allowed;
+  }
+}
+
 :root {
   --background: #f7f3ec;
   --foreground: #1c1814;

@@ -1,4 +1,4 @@
-/** P0 公式。口径见 docs/spec-p0.md 第 6 节，语义不得改。 */
+/** P0 公式。金额与份额口径见 docs/calculation-precision.md。 */
 import { decimal, roundDecimal } from "./decimal";
 
 export const MIN_ORDER_DEFAULT = 10;

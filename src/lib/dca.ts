@@ -1,5 +1,5 @@
 import { decimal, roundMoney } from "./decimal";
-/** 纳指定投频率与校验。口径见 docs/spec-dca.md。 */
+/** 纳指定投频率与校验。记账与确认规则见 docs/dca-pending-rules.md。 */
 
 import { formatMoney, isISODate, shiftISO } from "@/lib/format";
 

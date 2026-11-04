@@ -1,13 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { isolatedLedger } from "@/test/isolated-ledger";
 import Database from "better-sqlite3";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { correctDcaExecutionD1, recordPlanExecutionD1, removeDcaPlanD1 } from "./write-d1";
 import type { ReconcileD1 } from "../ledger/reconcile-d1";
 
-const tmp = mkdtempSync(path.join(os.tmpdir(), "dca-write-d1-"));
-vi.stubEnv("P0_TEST_DB", path.join(tmp, "ledger.sqlite"));
+isolatedLedger();
 
 function binding(db: Database.Database, beforeWrite?: () => void): ReconcileD1 {
   let calls = 0;
@@ -34,7 +31,7 @@ describe("D1 DCA writes", () => {
     if (!plan.ok) throw new Error(plan.error);
     const record = createPendingSubscription({ symbol: "019547", account: "alipay", dcaPlanId: plan.id, executionOn: "2026-10-08", cutoffPeriod: "before_15", cashDebited: 10, feeAmount: 0 });
     if (!record.ok) throw new Error(record.error);
-    db.pragma("journal_mode = DELETE");
+
     const cloud = new Database(db.serialize());
     const input = { id: record.id, cashDebited: 25, feeAmount: 1, outcome: "keep" as const };
     expect(await correctDcaExecutionD1(binding(cloud), input)).toEqual(correctDcaExecution(input));
@@ -90,5 +87,3 @@ describe("D1 DCA writes", () => {
     cloud.close();
   });
 });
-
-afterAll(() => rmSync(tmp, { recursive: true, force: true }));

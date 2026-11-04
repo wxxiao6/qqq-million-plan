@@ -1,5 +1,5 @@
 import { roundMoney as decimalRoundMoney } from "./decimal";
-/** 纳指雷达公式。口径见 docs/spec-quota.md 第 3 节。 */
+/** 纳指雷达公式。额度来源与去重规则见 docs/quota-ingestion.md 及本文件各函数约定。 */
 
 import { MIN_ORDER_DEFAULT } from "./formulas";
 

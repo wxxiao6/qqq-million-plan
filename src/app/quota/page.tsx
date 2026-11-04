@@ -14,6 +14,10 @@ import { estimatePurchasableQuota, sumVerifiedQuota } from "@/lib/nasdaq-quota-s
 import type { CatalogRow } from "@/server/funds/catalog";
 import { listNasdaqFundsForRuntime } from "@/server/funds/catalog-runtime";
 import { FUND_THEME_LABELS as THEME } from "@/lib/fund-theme";
+import { getCurrentUser } from "@/server/auth/context";
+import { readPersonalQuota } from "@/server/funds/personal-quota";
+import { PersonalQuotaEstimate } from "@/components/quota/personal-quota";
+import type { PersonalQuota } from "@/lib/personal-quota";
 
 export const dynamic = "force-dynamic";
 
@@ -119,16 +123,18 @@ function QuotaTotals({ rows }: { rows: CatalogRow[] }) {
   </div>;
 }
 
-function FundTable({ rows, channel, sort, queryChannel, queryUsdChannel, type, typeOptions }: {
+function FundTable({ rows, channel, sort, queryChannel, queryUsdChannel, type, typeOptions, personal = {} }: {
   rows: CatalogRow[]; channel: Channel; sort: FundSort;
   queryChannel: SalesChannel; queryUsdChannel: SalesChannel; type: FundTypeFilterValue;
   typeOptions: FundTheme[];
+  personal?: Record<string, PersonalQuota>;
 }) {
   const companyGroups = channel === "exchange"
     ? groupFundsByManager(rows)
     : sortOtcFundGroups(rows, channel, sort);
   const quotaSort = sort === "quota" || sort === "quota_asc";
   const trackingSort = sort === "tracking_asc" || sort === "tracking_desc";
+  const showPersonalQuota = channel !== "exchange" && rows.some((row) => personal[`${row.code}:${channel}`]);
   return <div className="table-scroll"><Table>
     <TableHeader><TableRow>
       <TableHead>基金公司</TableHead>
@@ -143,6 +149,7 @@ function FundTable({ rows, channel, sort, queryChannel, queryUsdChannel, type, t
           可投额度 <span aria-hidden="true">{sort === "quota" ? "↓" : sort === "quota_asc" ? "↑" : "↕"}</span>
         </Link>
       </TableHead> : null}
+      {showPersonalQuota ? <TableHead className="min-w-52">今日预计剩余</TableHead> : null}
       <TableHead>单位净值</TableHead>
       <TableHead>日涨跌</TableHead>
       {channel === "exchange" ? <TableHead>年化跟踪误差</TableHead> : <TableHead aria-sort={trackingSort ? sort === "tracking_asc" ? "ascending" : "descending" : "none"}>
@@ -160,6 +167,7 @@ function FundTable({ rows, channel, sort, queryChannel, queryUsdChannel, type, t
       const quotaObservedAt = channel === "direct" ? row.directQuoteObservedAt : row.agencyQuoteObservedAt;
       const agencyEvidence = channel === "agency" ? row.agencySellers.find((seller) => seller.sourceUrl)?.sourceUrl : null;
       const noticeEvidence = channel === "agency" ? row.agencyQuoteSourceUrl : channel === "direct" ? row.directQuoteSourceUrl : null;
+      const personalQuota = personal[`${row.code}:${channel}`];
       return <TableRow key={`${channel}-${row.code}`} className={groupIndex > 0 && rowIndex === 0 ? "border-t border-t-border" : undefined}>
         {rowIndex === 0 ? <th scope="rowgroup" rowSpan={group.rows.length}
           className="min-w-28 border-r border-border bg-muted/20 px-3 py-3 text-left align-top text-sm font-semibold whitespace-nowrap">
@@ -168,7 +176,9 @@ function FundTable({ rows, channel, sort, queryChannel, queryUsdChannel, type, t
         <TableCell className="w-72 min-w-72 max-w-72">
           <a href={row.detailUrl} target="_blank" rel="noreferrer" title={row.name} aria-label={`${row.name}，打开基金详情`}
             className="block w-72 truncate whitespace-nowrap font-medium hover:underline">{middleEllipsis(row.name)}</a>
-          <span className="mt-1 block font-mono text-xs text-muted-foreground">{row.code} · {row.currency}</span>
+          <span className="mt-1 flex flex-wrap items-center gap-2 font-mono text-xs text-muted-foreground">{row.code} · {row.currency}
+            {personalQuota?.ownPlanCount ? <span className="rounded border border-copper/20 bg-copper/5 px-1.5 py-0.5 font-sans text-[10px] text-copper">定投中</span> : null}
+          </span>
         </TableCell>
         <TableCell>{THEME[row.theme]}</TableCell>
         {channel !== "exchange" ? <TableCell>
@@ -177,6 +187,9 @@ function FundTable({ rows, channel, sort, queryChannel, queryUsdChannel, type, t
             sellers={row.agencySellers} /> : null}
           {noticeEvidence ? <EvidenceDialog kind="notice" fundName={row.name} code={row.code} sourceUrl={noticeEvidence} /> : null}
           {quotaObservedAt ? <time dateTime={quotaObservedAt} className="mt-1 block text-xs text-muted-foreground">核验于 {quotaTime(quotaObservedAt)}</time> : null}
+        </TableCell> : null}
+        {showPersonalQuota ? <TableCell>
+          {personalQuota ? <PersonalQuotaEstimate value={personalQuota} /> : <span className="text-muted-foreground">—</span>}
         </TableCell> : null}
         <TableCell className="font-mono tabular-nums">{row.nav == null ? "—" : formatNav(row.nav)}</TableCell>
         <TableCell className={`font-mono tabular-nums ${row.dailyChangePct == null ? "" : row.dailyChangePct < 0 ? "text-loss" : "text-gain"}`}>
@@ -199,7 +212,8 @@ export default async function QuotaPage({
   const selectedChannel = params.channel === "direct" ? "direct" : "agency";
   const selectedUsdChannel = params.usdChannel === "direct" ? "direct" : "agency";
   const sort: FundSort = params.sort === "quota_asc" || params.sort === "tracking_asc" || params.sort === "tracking_desc" ? params.sort : "quota";
-  const [allFunds, quotaStatus] = await Promise.all([listNasdaqFundsForRuntime(), fundDatabase().then((db) => readQuotaDailyStatus(db))]);
+  const [allFunds, quotaStatus, user] = await Promise.all([listNasdaqFundsForRuntime(), fundDatabase().then((db) => readQuotaDailyStatus(db)), getCurrentUser()]);
+  const personal = user ? await readPersonalQuota(await fundDatabase(), user.id, allFunds) : {};
   const quotaLabels = { scheduled: "今日额度待更新", collecting: "今日额度采集中", collected: "采集完成，等待上传", uploaded: "今日额度已更新", partial: "今日额度部分更新", failed: "今日额度采集失败", missing: "尚未收到今日额度" };
   const visibleUniverse = allFunds.filter((fund) => fund.venue === "exchange" ||
     (fund.currency === "USD" ? fund[selectedUsdChannel === "agency" ? "agencyStatus" : "directStatus"] :
@@ -239,18 +253,18 @@ export default async function QuotaPage({
       {visibleCnyOtc.length > 0 ? <Band label={`人民币场外基金（${visibleCnyOtc.length}）`}>
         <QuotaTotals rows={cnyOtc} />
         <ChannelTabs label="人民币销售渠道" selected={selectedChannel} href={(channel) => quotaHref(channel, selectedUsdChannel, sort, type)} />
-        <FundTable rows={visibleCnyOtc} channel={selectedChannel} sort={sort} queryChannel={selectedChannel} queryUsdChannel={selectedUsdChannel} type={type} typeOptions={cnyOtcTypes} />
+        <FundTable rows={visibleCnyOtc} channel={selectedChannel} sort={sort} queryChannel={selectedChannel} queryUsdChannel={selectedUsdChannel} type={type} typeOptions={cnyOtcTypes} personal={personal} />
       </Band> : null}
       {cnyExchange.length > 0 ? <Band label={`场内 ETF（${cnyExchange.length}）`}>
         <FundTable rows={cnyExchange} channel="exchange" sort={sort} queryChannel={selectedChannel} queryUsdChannel={selectedUsdChannel} type={type} typeOptions={cnyExchangeTypes} />
       </Band> : null}
       {visibleActiveFunds.length > 0 ? <Band label={`主动管理基金（${visibleActiveFunds.length}）`}>
         <ChannelTabs label="主动管理基金销售渠道" selected={selectedChannel} href={(channel) => quotaHref(channel, selectedUsdChannel, sort, type)} />
-        <FundTable rows={visibleActiveFunds} channel={selectedChannel} sort={sort} queryChannel={selectedChannel} queryUsdChannel={selectedUsdChannel} type={type} typeOptions={activeTypes} />
+        <FundTable rows={visibleActiveFunds} channel={selectedChannel} sort={sort} queryChannel={selectedChannel} queryUsdChannel={selectedUsdChannel} type={type} typeOptions={activeTypes} personal={personal} />
       </Band> : null}
       {visibleUsd.length > 0 ? <Band label={`美元计价 QDII 份额（${visibleUsd.length}）`}>
         <ChannelTabs label="美元销售渠道" selected={selectedUsdChannel} href={(channel) => quotaHref(selectedChannel, channel, sort, type)} />
-        <FundTable rows={visibleUsd} channel={selectedUsdChannel} sort={sort} queryChannel={selectedChannel} queryUsdChannel={selectedUsdChannel} type={type} typeOptions={usdTypes} />
+        <FundTable rows={visibleUsd} channel={selectedUsdChannel} sort={sort} queryChannel={selectedChannel} queryUsdChannel={selectedUsdChannel} type={type} typeOptions={usdTypes} personal={personal} />
       </Band> : null}
     </div>
   </>;

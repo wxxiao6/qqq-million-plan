@@ -21,6 +21,7 @@ vi.mock("@/server/ledger/reconcile-d1", () => ({ reconcileDueDcaPlansD1: vi.fn((
 
 import DcaPage from "./page";
 import { DcaDashboard } from "@/components/dca/dca-dashboard";
+import { getCurrentUser } from "@/server/auth/context";
 import { getDcaBoard } from "@/server/dca";
 import { readDcaDashboardD1 } from "@/server/dca/read-d1";
 import { reconcileDueDcaPlans } from "@/server/ledger/recent-pending";
@@ -46,4 +47,12 @@ it.each(["0", "1"])("opening and revisiting an overdue plan reads data without a
   expect(runtime === "1" ? getDcaBoard : readDcaDashboardD1).not.toHaveBeenCalled();
   expect(reconcileDueDcaPlans).not.toHaveBeenCalled();
   expect(reconcileDueDcaPlansD1).not.toHaveBeenCalled();
+});
+
+it.each(["0", "1"])("anonymous page requests redirect without reading the ledger (runtime %s)", async (runtime) => {
+  vi.stubEnv("CLOUDFLARE_RUNTIME", runtime);
+  vi.mocked(getCurrentUser).mockResolvedValueOnce(null);
+  await expect(DcaPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("NEXT_REDIRECT");
+  expect(getDcaBoard).not.toHaveBeenCalled();
+  expect(readDcaDashboardD1).not.toHaveBeenCalled();
 });

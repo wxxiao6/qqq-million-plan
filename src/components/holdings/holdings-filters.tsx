@@ -28,10 +28,10 @@ export function HoldingsFilters({ rows, managers, query, scope, channel, detail,
   const search = useRef<HTMLInputElement>(null);
   const hintId = useId();
   const hasChannel = channel !== "all";
-  const detailLabel = channel === "direct" ? "基金公司" : "代销平台";
+  const detailLabel = channel === "direct" ? "基金公司" : "账户";
   const detailOptions = salesDetails(rows, managers, channel).map((value) => ({
     value,
-    label: value === UNKNOWN_SALES_DETAIL ? (channel === "direct" ? "基金公司待核实" : "平台待核实") : channel === "direct" ? value : accountLabel(value),
+    label: value === UNKNOWN_SALES_DETAIL ? (channel === "direct" ? "基金公司待核实" : "账户待核实") : channel === "direct" ? value : accountLabel(value),
   }));
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export function HoldingsFilters({ rows, managers, query, scope, channel, detail,
     <div className={`mt-4 grid min-w-0 grid-cols-2 items-end gap-3 ${hasChannel ? "lg:grid-cols-4" : "sm:grid-cols-3"}`}>
       <FilterSelect label="范围" ariaLabel="持仓范围" value={scope} onValueChange={onScopeChange} options={HOLDING_FUND_SCOPES} triggerClassName="data-[size=default]:h-11" />
       <FilterSelect<SalesChannelFilter> label="渠道" value={channel} onValueChange={onChannelChange} options={channels} triggerClassName="data-[size=default]:h-11" />
-      {hasChannel ? <FilterSelect label={detailLabel} value={detail} onValueChange={onDetailChange} options={[{ value: "all", label: channel === "direct" ? "全部基金公司" : "全部代销平台" }, ...detailOptions]} triggerClassName="data-[size=default]:h-11" /> : null}
+      {hasChannel ? <FilterSelect label={detailLabel} value={detail} onValueChange={onDetailChange} options={[{ value: "all", label: channel === "direct" ? "全部基金公司" : "全部账户" }, ...detailOptions]} triggerClassName="data-[size=default]:h-11" /> : null}
       <FilterSelect<HoldingSortOrder> label="排序" value={sort} onValueChange={onSortChange} options={sorts} className={hasChannel ? undefined : "col-span-2 sm:col-span-1"} triggerClassName="data-[size=default]:h-11" />
     </div>
   </div>;

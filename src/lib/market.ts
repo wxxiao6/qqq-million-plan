@@ -1,4 +1,4 @@
-/** 全市场纳指情况。产品契约见 docs/spec-jobs.md 第 2 节。 */
+/** 全市场纳指情况。数据源说明见 docs/data-source-evaluation.md。 */
 
 export type MarketSubscribeStatus = "open" | "limited" | "paused";
 export type MarketShareClass = "A" | "C" | "D" | "E" | "I" | "F";

@@ -1,4 +1,4 @@
-/** 纳指雷达。只读决策页；用户不维护额度。口径见 docs/spec-quota.md。 */
+/** 纳指雷达。只读决策页；用户不维护额度。额度来源见 docs/quota-ingestion.md。 */
 
 import {
   beijingDateISOFromInstant,

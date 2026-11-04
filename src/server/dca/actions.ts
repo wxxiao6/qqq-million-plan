@@ -1,5 +1,6 @@
 "use server";
 
+import { requireUser } from "@/server/auth/context";
 import { revalidatePath } from "next/cache";
 import type { DcaExecutionInput, DcaInput } from "@/lib/dca";
 import { validateDcaCreation, type DcaCreationMode } from "@/lib/dca-creation";
@@ -41,6 +42,7 @@ async function cloudDatabase(): Promise<ReconcileD1> {
 export async function saveDcaPlan(
   input: DcaInput & { id?: number; creationMode?: DcaCreationMode; confirmedBackfill?: { count: number; total: number; through: string } },
 ): Promise<ActionResult> {
+  await requireUser();
   if (!input.id) {
     const error = validateDcaCreation(input, beijingTodayISO());
     if (error) return { ok: false, error };
@@ -52,25 +54,31 @@ export async function saveDcaPlan(
 }
 
 export async function saveDcaExecution(planId: number, execution: DcaExecutionInput): Promise<ActionResult> {
+  await requireUser();
   return toAction(process.env.CLOUDFLARE_RUNTIME === "1" ? await recordPlanExecutionD1(await cloudDatabase(), planId, execution) : recordPlanExecution(planId, execution));
 }
 
 export async function pauseDcaPlan(id: number): Promise<ActionResult> {
+  await requireUser();
   return toAction(process.env.CLOUDFLARE_RUNTIME === "1" ? await setDcaPlanStatusD1(await cloudDatabase(), id, "paused") : setDcaPlanStatus(id, "paused"));
 }
 
 export async function resumeDcaPlan(id: number): Promise<ActionResult> {
+  await requireUser();
   return toAction(process.env.CLOUDFLARE_RUNTIME === "1" ? await setDcaPlanStatusD1(await cloudDatabase(), id, "active") : setDcaPlanStatus(id, "active"));
 }
 
 export async function endDcaPlan(id: number): Promise<ActionResult> {
+  await requireUser();
   return toAction(process.env.CLOUDFLARE_RUNTIME === "1" ? await setDcaPlanStatusD1(await cloudDatabase(), id, "ended") : setDcaPlanStatus(id, "ended"));
 }
 
 export async function deleteDcaPlan(id: number): Promise<ActionResult> {
+  await requireUser();
   return toAction(process.env.CLOUDFLARE_RUNTIME === "1" ? await removeDcaPlanD1(await cloudDatabase(), id) : removeDcaPlan(id));
 }
 
 export async function correctDcaExecutionAction(input: Parameters<typeof correctDcaExecution>[0]): Promise<ActionResult> {
+  await requireUser();
   return toAction(process.env.CLOUDFLARE_RUNTIME === "1" ? await correctDcaExecutionD1(await cloudDatabase(), input) : correctDcaExecution(input));
 }

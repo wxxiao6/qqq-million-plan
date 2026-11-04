@@ -1,12 +1,9 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { isolatedLedger } from "@/test/isolated-ledger";
 import Database from "better-sqlite3";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReconcileD1 } from "../ledger/reconcile-d1";
 
-const tmp = mkdtempSync(path.join(os.tmpdir(), "dca-edit-d1-"));
-vi.stubEnv("P0_TEST_DB", path.join(tmp, "ledger.sqlite"));
+isolatedLedger();
 
 function binding(db: Database.Database, beforeWrite?: () => void): ReconcileD1 {
   let calls = 0;
@@ -41,7 +38,7 @@ describe("D1 plan editing", () => {
       for (const date of ["2026-10-12", "2026-10-13", "2026-10-14"]) {
         db.prepare("INSERT INTO nav_snapshots (symbol,as_of,nav,source) VALUES ('019547',?,2,'real')").run(date);
       }
-      db.pragma("journal_mode = DELETE");
+
       const cloud = new Database(db.serialize());
       const edit = { ...input, id: plan.id, account: "jd", amount: 20 };
       expect(await editDcaPlanD1(binding(cloud), edit, "2026-10-14")).toEqual(upsertDcaPlan(edit, { importPastPending: false }));
@@ -102,5 +99,3 @@ describe("D1 plan editing", () => {
     } finally { vi.useRealTimers(); }
   });
 });
-
-afterAll(() => rmSync(tmp, { recursive: true, force: true }));

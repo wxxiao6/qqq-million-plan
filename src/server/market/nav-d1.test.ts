@@ -1,14 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { isolatedLedger } from "@/test/isolated-ledger";
 import Database from "better-sqlite3";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { saveNavChunkD1, syncNavChunkD1, updatePortfolioSnapshotD1 } from "./nav-d1";
 import type { MarketD1 } from "./tiantian-d1";
 import type { ReconcileD1 } from "../ledger/reconcile-d1";
 
-const tmp = mkdtempSync(path.join(os.tmpdir(), "nav-d1-"));
-vi.stubEnv("P0_TEST_DB", path.join(tmp, "ledger.sqlite"));
+isolatedLedger();
 
 function binding(db: Database.Database, failAt = -1): MarketD1 {
   return {
@@ -84,7 +81,7 @@ describe("D1 NAV chunk", () => {
       db.prepare(`INSERT INTO positions(account,exposure,symbol,cost,status,execution_on,cutoff_period,auto_generated,updated_at)
         VALUES ('alipay','nasdaq',?,?,'pending','2026-11-02','before_15',1,'2026-11-02')`).run(symbol, cost);
     }
-    db.pragma("journal_mode = DELETE");
+
     const cloud = new Database(db.serialize());
     try {
       for (const [index, [, , shares]] of cases.entries()) {
@@ -113,5 +110,3 @@ describe("D1 NAV chunk", () => {
     await expect(syncNavChunkD1(d1, { codes: Array.from({ length: 26 }, (_, i) => String(i)), observedAt: "2026-10-31" }, source)).rejects.toThrow("Too many funds");
   });
 });
-
-afterAll(() => rmSync(tmp, { recursive: true, force: true }));

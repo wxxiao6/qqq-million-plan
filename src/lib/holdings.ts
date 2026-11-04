@@ -1,4 +1,4 @@
-/** 持仓概览资产类型。口径见 docs/spec-holdings.md。 */
+/** 持仓概览资产类型。基金持仓规则见 docs/personal-fund-holdings.md。 */
 
 export const ASSET_TYPES = ["nasdaq", "gold", "crypto"] as const;
 export type AssetType = (typeof ASSET_TYPES)[number];

@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { isolatedLedger } from "@/test/isolated-ledger";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseFundIdentity } from "./discovery";
 import { discoverPersonalFund, readPersonalFund, attachFundNavStatement } from "./personal";
 import { localFundDatabase } from "./database";
@@ -13,8 +13,7 @@ import { saveNavChunkD1 } from "../market/nav-d1";
 vi.mock("../auth/context", () => ({ requireUser: async () => ({ id: "test-owner" }) }));
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 
-const tmp = mkdtempSync(path.join(os.tmpdir(), "personal-funds-"));
-vi.stubEnv("P0_TEST_DB", path.join(tmp, "ledger.sqlite"));
+const fixture = isolatedLedger();
 const code = "161725";
 const identity = { code, name: "招商中证白酒指数(LOF)A", manager: "招商基金", fundType: "指数型-股票", currency: "CNY" as const,
   venue: "otc" as const, isNasdaq: false, sourceUrl: "https://example.com/info" };
@@ -22,12 +21,7 @@ const record = { code, navDate: "2026-10-30", nav: 1.2, dailyChangePct: 20, sour
   recentHistory: [{ navDate: "2026-10-30", nav: 1.2, dailyChangePct: 20 }, { navDate: "2026-10-29", nav: 1, dailyChangePct: null }] };
 let sqlite: Database.Database;
 
-beforeAll(async () => {
-  const database = await import("../db");
-  expect(database.getDbPath()).toBe(path.join(tmp, "ledger.sqlite"));
-  sqlite = database.getDb();
-});
-afterAll(() => { sqlite?.close(); rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { sqlite = fixture.db; });
 
 describe("personal fund lifecycle", () => {
   it("migrates existing financial data and owner linkage without loss", () => {
@@ -74,6 +68,7 @@ describe("personal fund lifecycle", () => {
 
   it("preserves the last price on failure and recovers later that day", async () => {
     const db = localFundDatabase(sqlite);
+    await discoverPersonalFund(db, code, { identity: async () => identity, source: { name: "tiantian", fetchNav: async () => record }, now: new Date("2026-10-31T01:00:00Z") });
     const failing = { name: "tiantian", fetchNav: vi.fn(async () => { throw new Error("offline"); }) };
     const found = await discoverPersonalFund(db, code, { source: failing, now: new Date("2026-10-31T02:00:00Z") });
     expect(found.nav).toBe(1.2);
@@ -108,6 +103,8 @@ describe("personal fund lifecycle", () => {
 
   it("includes held funds once in cloud pagination but excludes unheld discoveries and leaves quota unchanged", async () => {
     const base = localFundDatabase(sqlite);
+    await discoverPersonalFund(base, code, { identity: async () => identity, source: { name: "tiantian", fetchNav: async () => record } });
+    expect(await savePositionD1(base, { account: "other", exposure: "fund", symbol: code, shares: 100, cost: 100, status: "settled" })).toEqual({ ok: true });
     // Model the D1 all() read API on top of the same migrated SQLite schema.
     const db = { ...base, prepare(sql: string) { return { bind(...values: (string | number | null)[]) {
       return { sql, values, async all<T>() { return { results: sqlite.prepare(sql).all(...values) as T[] }; } };

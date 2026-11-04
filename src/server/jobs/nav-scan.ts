@@ -1,5 +1,5 @@
 import { saveRecentNavHistory } from "../ledger/recent-pending";
-/** 任务 B：写入净值并重算估值；在途申购须由用户按确认份额手动结转。 */
+/** 任务 B：写入净值并重算估值；手工在途按实际确认份额结转，自动订单估算规则见 docs/dca-pending-rules.md。 */
 
 import { beijingTodayISO } from "@/lib/format";
 import type { NasdaqShareSituation } from "@/lib/market";

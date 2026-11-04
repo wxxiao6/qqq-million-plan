@@ -1,13 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { isolatedLedger } from "@/test/isolated-ledger";
 import Database from "better-sqlite3";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDcaPlanD1 } from "./create-d1";
 import type { ReconcileD1 } from "../ledger/reconcile-d1";
 
-const tmp = mkdtempSync(path.join(os.tmpdir(), "dca-create-d1-"));
-vi.stubEnv("P0_TEST_DB", path.join(tmp, "ledger.sqlite"));
+isolatedLedger();
 
 function binding(db: Database.Database, failAt = -1): ReconcileD1 {
   let calls = 0;
@@ -31,7 +28,7 @@ describe("D1 plan creation", () => {
       const { upsertDcaPlan } = await import("./index");
       const db = getDb();
       for (const date of ["2026-10-08", "2026-10-09", "2026-10-12"]) db.prepare("INSERT INTO nav_snapshots (symbol,as_of,nav,source) VALUES ('019547',?,2,'real')").run(date);
-      db.pragma("journal_mode = DELETE");
+
       const cloud = new Database(db.serialize());
       const input = { symbol: "019547", shareClass: "A", channelKind: "agency", account: "alipay", amount: 10, frequency: "daily", startDate: "2026-10-08", cutoffPeriod: "before_15" as const,
         execution: { status: "bought_after_cutoff" as const, executionDate: "2026-10-09", actualCashDebited: 20, actualFeeAmount: 1 } };
@@ -68,5 +65,3 @@ describe("D1 plan creation", () => {
     cloud.close();
   });
 });
-
-afterAll(() => rmSync(tmp, { recursive: true, force: true }));

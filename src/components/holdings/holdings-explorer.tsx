@@ -1,9 +1,8 @@
 "use client";
 
 import { RefreshFundNav } from "./refresh-fund-nav";
-import { useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { ArrowUpRight, ChevronDown, Eye, EyeOff, RotateCcw } from "lucide-react";
-import { Switch } from "radix-ui";
 import { PendingHoldingsDialog } from "./pending-holdings-dialog";
 import { DeletePositionButton, PositionForm } from "@/components/holdings/holdings-forms";
 import { accountLabel } from "@/components/labels";
@@ -56,7 +55,6 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, fundCa
   const [detail, setDetail] = useState("all");
   const [sort, setSort] = useState<HoldingSortOrder>("value");
   const showNumbers = useSyncExternalStore(subscribeOverviewVisibility, readOverviewVisibility, serverOverviewVisibility);
-  const visibilityId = useId();
 
   const groups = useMemo(() => {
     const matching = filterBySalesChannel(filterHoldingPositions(filterHoldingFundScope(positions, names, scope, fundCategories), names, query, "all"), managers, channel, detail);
@@ -80,25 +78,22 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, fundCa
         <div className="bg-foreground px-6 py-6 text-primary-foreground @min-[40rem]/overview:px-8">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs font-medium tracking-[.16em] text-primary-foreground/60">{scope !== "all" ? `${HOLDING_FUND_LABELS[scope]} · 筛选结果` : isFiltered ? "基金持仓 · 筛选结果" : "基金持仓 · 组合总览"}</p>
-            <div className="flex items-center gap-2.5">
-              <label htmlFor={visibilityId} className="flex cursor-pointer items-center gap-1.5 text-xs text-primary-foreground/75">
-                {showNumbers ? <Eye className="size-3.5" aria-hidden="true" /> : <EyeOff className="size-3.5" aria-hidden="true" />}显示数字
-              </label>
-              <Switch.Root id={visibilityId} checked={showNumbers} onCheckedChange={writeOverviewVisibility} aria-label="显示数字"
-                className="inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full bg-primary-foreground/20 p-1 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-foreground/80 focus-visible:ring-offset-2 focus-visible:ring-offset-foreground data-[state=checked]:bg-copper">
-                <Switch.Thumb className="block size-4 rounded-full bg-primary-foreground shadow-sm transition-transform data-[state=checked]:translate-x-5" />
-              </Switch.Root>
-            </div>
+            <button type="button" onClick={() => writeOverviewVisibility(!showNumbers)} aria-pressed={showNumbers}
+              aria-label={showNumbers ? "隐藏总览金额" : "显示总览金额"}
+              className="-my-2 -mr-2 inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full px-3 text-xs text-primary-foreground/70 outline-none transition-colors hover:bg-primary-foreground/10 hover:text-primary-foreground focus-visible:ring-2 focus-visible:ring-primary-foreground/70">
+              {showNumbers ? <Eye className="size-4" aria-hidden="true" /> : <EyeOff className="size-4" aria-hidden="true" />}
+              {showNumbers ? "隐藏金额" : "显示金额"}
+            </button>
           </div>
           <div className="mt-5 grid min-w-0 gap-7 @min-[64rem]/overview:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
           <div className="min-w-0">
             <p className="text-sm text-primary-foreground/70">{summary.unvaluedCount ? "已估值资产（含待确认资金）" : isFiltered ? "筛选资产合计" : "资产合计"}</p>
-            <p className="font-display mt-1 text-[clamp(2rem,6cqi,4.5rem)] font-semibold leading-none tracking-[-.045em]">
-              <OverviewValue visible={showNumbers}><Money value={marketValueIncludingPending(summary.marketValue, summary.pendingCash)} className="whitespace-nowrap font-display" /></OverviewValue>
+            <p className="font-display mt-1 flex h-[1.15em] items-center text-[clamp(2rem,6cqi,4.5rem)] font-semibold leading-none tracking-[-.045em]">
+              <OverviewValue visible={showNumbers} prominent><Money value={marketValueIncludingPending(summary.marketValue, summary.pendingCash)} className="whitespace-nowrap font-display" /></OverviewValue>
             </p>
             <p className="mt-4 text-xs text-primary-foreground/60">
               {showNumbers ? <>含待确认资金 · {summary.fundCount} 只基金 · {summary.settledCount} 笔已确认
-                {summary.unvaluedCount > 0 ? ` · ${summary.unvaluedCount} 笔缺少净值，未计入资产合计` : ""}</> : "统计数字已隐藏"}
+                {summary.unvaluedCount > 0 ? ` · ${summary.unvaluedCount} 笔缺少净值，未计入资产合计` : ""}</> : "金额已隐藏"}
             </p>
           </div>
           <div className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-6 border-t border-primary-foreground/15 pt-5 @min-[20rem]/overview:grid-cols-2 @min-[64rem]/overview:border-l @min-[64rem]/overview:border-t-0 @min-[64rem]/overview:pl-7 @min-[64rem]/overview:pt-0">
@@ -109,7 +104,7 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, fundCa
               value={<OverviewValue visible={showNumbers}><Money value={summary.today} signed className={summary.today != null && summary.today < 0 ? "!text-[#ffc3b8]" : "!text-[#b4e6c7]"} /></OverviewValue>} />
             <PendingHoldingsDialog positions={groups.flatMap((group) => group.positions)} names={names} managers={managers} trigger={<button type="button" className="@container min-w-0 rounded-lg text-left outline-none transition-colors hover:bg-primary-foreground/10 focus-visible:ring-2 focus-visible:ring-primary-foreground/60" aria-label={showNumbers ? `查看待确认申购，${summary.pendingCount} 笔，合计 ${summary.pendingCash.toFixed(2)} 元` : "查看待确认申购明细"}>
               <span className="flex items-center gap-1 text-xs text-primary-foreground/60">待确认资金<ArrowUpRight className="size-3.5" aria-hidden="true" /></span>
-              <span className="mt-1 block whitespace-nowrap text-[clamp(1rem,11cqi,1.5rem)] font-semibold leading-snug tracking-tight"><OverviewValue visible={showNumbers}><Money value={summary.pendingCash} /></OverviewValue></span>
+              <span className="mt-1 flex h-[1.6em] items-center whitespace-nowrap text-[clamp(1rem,11cqi,1.5rem)] font-semibold leading-snug tracking-tight"><OverviewValue visible={showNumbers}><Money value={summary.pendingCash} /></OverviewValue></span>
               <span className="mt-1 block text-xs text-primary-foreground/60 underline underline-offset-4">{showNumbers ? `查看 ${summary.pendingCount} 笔待确认` : "查看待确认明细"}</span>
             </button>} />
           </div>
@@ -154,14 +149,16 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, fundCa
   </>;
 }
 
-function OverviewValue({ visible, children }: { visible: boolean; children: React.ReactNode }) {
-  return visible ? children : <span aria-label="数字已隐藏" className="font-mono tracking-[.18em]">••••</span>;
+function OverviewValue({ visible, prominent = false, children }: { visible: boolean; prominent?: boolean; children: React.ReactNode }) {
+  return visible ? children : <span role="img" aria-label="金额已隐藏" className={`inline-block translate-y-[.15em] select-none font-mono font-medium leading-none tracking-[.12em] text-primary-foreground/85 ${prominent ? "text-[clamp(1.5rem,3.5cqi,2.5rem)]" : "text-[.85em]"}`}>
+    <span aria-hidden="true">****</span>
+  </span>;
 }
 
 function OverviewNumber({ label, value, detail }: { label: string; value: React.ReactNode; detail?: React.ReactNode }) {
   return <div className="@container min-w-0">
     <p className="text-xs text-primary-foreground/60">{label}</p>
-    <p className="mt-1 whitespace-nowrap text-[clamp(1rem,11cqi,1.5rem)] font-semibold leading-snug tracking-tight">{value}</p>
+    <p className="mt-1 flex h-[1.6em] items-center whitespace-nowrap text-[clamp(1rem,11cqi,1.5rem)] font-semibold leading-snug tracking-tight">{value}</p>
     {detail ? <p className="mt-1 text-xs text-primary-foreground/50">{detail}</p> : null}
   </div>;
 }
