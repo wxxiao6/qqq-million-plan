@@ -28,8 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatMoney, formatQty, todayISO } from "@/lib/format";
-import { decimal } from "@/lib/decimal";
-import { resolveHoldingNumbers } from "@/lib/holding-input";
+import { createHoldingDraft, editHoldingDraft, holdingDraftInput, resolveHoldingNumbers } from "@/lib/holding-input";
 import { notifySaved } from "@/lib/notify";
 import {
   deletePosition,
@@ -73,7 +72,7 @@ export function PositionForm({
 }) {
   const router = useRouter();
   const initialEntryMode: EntryMode = initial && !(initial.shares && initial.shares > 0) ? "total" : "price";
-  const initialAmounts = { shares: initial?.shares?.toString() ?? "", cost: initial?.cost.toString() ?? "", unitCost: initial?.shares && initial.shares > 0 ? decimal(initial.cost).div(initial.shares).toString() : "" };
+
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -83,10 +82,11 @@ export function PositionForm({
   const [channel, setChannel] = useState<"agency" | "direct">(initial?.account === "gf_direct" ? "direct" : "agency");
   const [account, setAccount] = useState(initial?.account === "gf_direct" ? "alipay" : initial?.account ?? "alipay");
   const status = initial?.status ?? "settled";
-  const [amounts, setAmounts] = useState(initialAmounts);
+  const [draft, setDraft] = useState(() => createHoldingDraft(initial));
+  const { amounts } = draft;
   const fields = ENTRY_MODES[entryMode].fields;
   const computedKey = ENTRY_MODES[entryMode].computed;
-  const numericAmounts = Object.fromEntries(fields.map((key) => [key, amounts[key].trim() === "" ? null : Number(amounts[key])]));
+  const numericAmounts = holdingDraftInput(draft, fields);
   const calculated = resolveHoldingNumbers(numericAmounts);
   const hasBothAmounts = fields.every((key) => amounts[key].trim() !== "");
   const [selectedFund, setSelectedFund] = useState<PersonalFund | null>(null);
@@ -101,7 +101,7 @@ export function PositionForm({
   const formId = `position-${initial?.id ?? "new"}`;
 
   function changeEntryMode(mode: EntryMode) {
-    if (calculated.ok) setAmounts({ shares: String(calculated.shares), cost: String(calculated.cost), unitCost: String(calculated.unitCost) });
+    if (calculated.ok) setDraft(createHoldingDraft(calculated));
     setEntryMode(mode);
     setError(null);
   }
@@ -147,7 +147,7 @@ export function PositionForm({
       if (pending) return;
       setOpen(next);
       if (next) {
-        setAmounts(initialAmounts);
+        setDraft(createHoldingDraft(initial));
         setSelectedSymbol(initial?.symbol ?? "");
         setSelectedFund(null); setLookupBusy(false);
         setChannel(initial?.account === "gf_direct" ? "direct" : "agency");
@@ -229,7 +229,7 @@ export function PositionForm({
               {fields.map((key) => <div key={key} className="grid min-w-0 gap-2">
                 <Label htmlFor={`${key}-${initial?.id ?? "new"}`}>{AMOUNT_LABELS[key]}<span className="font-normal text-muted-foreground">{key === "shares" ? "（份）" : key === "unitCost" ? "（元/份）" : "（元）"}</span></Label>
                 <Input id={`${key}-${initial?.id ?? "new"}`} name={key} type="number" min={key === "shares" ? "0.0001" : "0"} step="any" inputMode="decimal" required
-                  value={amounts[key]} onChange={(event) => { setAmounts((current) => ({ ...current, [key]: event.target.value })); setError(null); }}
+                  value={amounts[key]} onChange={(event) => { setDraft((current) => editHoldingDraft(current, key, event.target.value)); setError(null); }}
                   aria-invalid={hasBothAmounts && !calculated.ok} aria-describedby={`${formId}-amounts-help`} placeholder={key === "shares" ? "例如 1000.00" : key === "cost" ? "例如 2000.00" : "例如 2.0000"} className="h-12 rounded-xl bg-background/50 font-mono text-lg md:text-lg" />
               </div>)}
             </div>

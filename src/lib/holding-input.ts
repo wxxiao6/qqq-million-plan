@@ -2,6 +2,35 @@ import { decimal, roundMoney } from "./decimal";
 
 export type HoldingNumbers = { shares?: number | null; cost?: number | null; unitCost?: number | null };
 
+export type HoldingDraft = {
+  amounts: Record<keyof HoldingNumbers, string>;
+  preserved?: HoldingNumbers;
+};
+
+/** Round derived prices for editing, retaining the authoritative cost and shares. */
+export function createHoldingDraft(initial?: { shares: number | null; cost: number }): HoldingDraft {
+  return {
+    amounts: {
+      shares: initial?.shares?.toString() ?? "",
+      cost: initial?.cost.toString() ?? "",
+      unitCost: initial?.shares && initial.shares > 0
+        ? decimal(initial.cost).div(initial.shares).toDecimalPlaces(8).toString() : "",
+    },
+    preserved: initial && initial.shares != null && initial.shares > 0
+      ? { shares: initial.shares, cost: initial.cost } : undefined,
+  };
+}
+
+export function holdingDraftInput(draft: HoldingDraft, fields: readonly (keyof HoldingNumbers)[]): HoldingNumbers {
+  return draft.preserved ?? Object.fromEntries(fields.map((key) => [
+    key, draft.amounts[key].trim() === "" ? null : Number(draft.amounts[key]),
+  ]));
+}
+
+export function editHoldingDraft(draft: HoldingDraft, key: keyof HoldingNumbers, value: string): HoldingDraft {
+  return { amounts: { ...draft.amounts, [key]: value } };
+}
+
 /** Resolve any two values. A missing value is distinct from an explicit zero. */
 export function resolveHoldingNumbers(input: HoldingNumbers):
   { ok: true; shares: number; cost: number; unitCost: number } | { ok: false; error: string } {
