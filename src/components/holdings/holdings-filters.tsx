@@ -6,8 +6,8 @@ import { FilterSelect } from "@/components/filter-select";
 import { accountLabel } from "@/components/labels";
 import { salesDetails, UNKNOWN_SALES_DETAIL, type SalesChannelFilter, type SalesFilterRow } from "@/lib/sales-channel-filter";
 import type { HoldingSortOrder } from "@/lib/holdings-dashboard";
+import { HOLDING_FUND_SCOPES, type HoldingFundScope } from "@/lib/fund-category";
 
-const scopes = [{ value: "all", label: "全部基金" }, { value: "nasdaq", label: "纳指基金" }, { value: "fund", label: "其他基金" }];
 const channels = [{ value: "all", label: "全部渠道" }, { value: "direct", label: "直销" }, { value: "agency", label: "代销" }] as const;
 const sorts = [{ value: "gain", label: "持有收益排序" }, { value: "gainRate", label: "持有收益率排序" }, { value: "value", label: "金额排序" }, { value: "dayGain", label: "昨日收益排序" }, { value: "navDate", label: "更新时间排序" }] as const;
 
@@ -15,12 +15,12 @@ export function HoldingsFilters({ rows, managers, query, scope, channel, detail,
   rows: SalesFilterRow[];
   managers: Record<string, string>;
   query: string;
-  scope: string;
+  scope: HoldingFundScope;
   channel: SalesChannelFilter;
   detail: string;
   sort: HoldingSortOrder;
   onQueryChange: (value: string) => void;
-  onScopeChange: (value: string) => void;
+  onScopeChange: (value: HoldingFundScope) => void;
   onChannelChange: (value: SalesChannelFilter) => void;
   onDetailChange: (value: string) => void;
   onSortChange: (value: HoldingSortOrder) => void;
@@ -69,7 +69,7 @@ export function HoldingsFilters({ rows, managers, query, scope, channel, detail,
     <p id={hintId} className="sr-only">输入即筛选当前持仓。按 Escape 清空搜索，保留其他筛选条件。</p>
 
     <div className={`mt-4 grid min-w-0 grid-cols-2 items-end gap-3 ${hasChannel ? "lg:grid-cols-4" : "sm:grid-cols-3"}`}>
-      <FilterSelect label="范围" ariaLabel="持仓范围" value={scope} onValueChange={onScopeChange} options={scopes} triggerClassName="data-[size=default]:h-11" />
+      <FilterSelect label="范围" ariaLabel="持仓范围" value={scope} onValueChange={onScopeChange} options={HOLDING_FUND_SCOPES} triggerClassName="data-[size=default]:h-11" />
       <FilterSelect<SalesChannelFilter> label="渠道" value={channel} onValueChange={onChannelChange} options={channels} triggerClassName="data-[size=default]:h-11" />
       {hasChannel ? <FilterSelect label={detailLabel} value={detail} onValueChange={onDetailChange} options={[{ value: "all", label: channel === "direct" ? "全部基金公司" : "全部代销平台" }, ...detailOptions]} triggerClassName="data-[size=default]:h-11" /> : null}
       <FilterSelect<HoldingSortOrder> label="排序" value={sort} onValueChange={onSortChange} options={sorts} className={hasChannel ? undefined : "col-span-2 sm:col-span-1"} triggerClassName="data-[size=default]:h-11" />

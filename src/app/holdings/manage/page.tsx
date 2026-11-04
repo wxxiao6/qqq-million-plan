@@ -10,6 +10,7 @@ import { listNasdaqHoldingManagers, listPositionDetails } from "@/server/ledger"
 import { listDcaPlans } from "@/server/dca";
 import { readHoldingsManagementD1 } from "@/server/holdings/read-d1";
 import { isQdiiFund } from "@/lib/holdings-dashboard";
+import { classifyHoldingFund } from "@/lib/fund-category";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,8 @@ function readLocalHoldings() {
   const managers = { ...Object.fromEntries(pendingFunds.filter((fund) => fund.manager).map((fund) => [fund.code, fund.manager!])), ...Object.fromEntries(funds.filter((fund) => fund.manager).map((fund) => [fund.code, fund.manager!])), ...listNasdaqHoldingManagers() };
   const syncErrors = Object.fromEntries(funds.filter((fund) => fund.syncError).map((fund) => [fund.code, fund.syncError!]));
   const qdiiFunds = Object.fromEntries(funds.map((fund) => [fund.code, isQdiiFund(fund.name, fund.fundType, Boolean(fund.isNasdaq))]));
-  return { positions, names, managers, syncErrors, qdiiFunds, pendingNames: Object.fromEntries(pendingFunds.map((fund) => [fund.code, fund.name])), plans: listDcaPlans() };
+  const fundCategories = Object.fromEntries(funds.map((fund) => [fund.code, classifyHoldingFund(fund.name, fund.fundType, Boolean(fund.isNasdaq))]));
+  return { positions, names, managers, syncErrors, qdiiFunds, fundCategories, pendingNames: Object.fromEntries(pendingFunds.map((fund) => [fund.code, fund.name])), plans: listDcaPlans() };
 }
 
 export default async function HoldingsManagePage() {
@@ -41,7 +43,7 @@ export default async function HoldingsManagePage() {
     />
 
     <div className="space-y-6">
-      <HoldingsExplorer positions={positions} names={names} managers={managers} syncErrors={data.syncErrors} qdiiFunds={data.qdiiFunds} />
+      <HoldingsExplorer positions={positions} names={names} managers={managers} syncErrors={data.syncErrors} qdiiFunds={data.qdiiFunds} fundCategories={data.fundCategories} />
     </div>
   </>;
 }

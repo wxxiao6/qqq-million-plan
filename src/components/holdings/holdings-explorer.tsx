@@ -9,7 +9,8 @@ import { DeletePositionButton, PositionForm } from "@/components/holdings/holdin
 import { accountLabel } from "@/components/labels";
 import { HoldingsFilters } from "./holdings-filters";
 import { Money, Qty } from "@/components/money";
-import { filterHoldingPositions, fundIncomeDate, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, sortHoldingGroups, summarizeNasdaqHoldings, type HoldingChannelGroup, type HoldingGroup, type HoldingSortOrder } from "@/lib/holdings-dashboard";
+import { filterHoldingFundScope, filterHoldingPositions, fundIncomeDate, groupHoldingChannels, groupNasdaqHoldings, marketValueIncludingPending, sortHoldingGroups, summarizeNasdaqHoldings, type HoldingChannelGroup, type HoldingGroup, type HoldingSortOrder } from "@/lib/holdings-dashboard";
+import { HOLDING_FUND_LABELS, type HoldingFundCategory, type HoldingFundScope } from "@/lib/fund-category";
 import type { PositionDetail } from "@/server/ledger";
 import { filterBySalesChannel, type SalesChannelFilter } from "@/lib/sales-channel-filter";
 
@@ -48,8 +49,8 @@ function incomeLabel(incomeDate: string | null): string {
   return incomeDate ? `${incomeDate} 收益` : "单日收益";
 }
 
-export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncErrors = {} }: { positions: PositionDetail[]; names: Record<string, string>; managers: Record<string, string>; qdiiFunds: Record<string, boolean>; syncErrors?: Record<string, string> }) {
-  const [scope, setScope] = useState("all");
+export function HoldingsExplorer({ positions, names, managers, qdiiFunds, fundCategories = {}, syncErrors = {} }: { positions: PositionDetail[]; names: Record<string, string>; managers: Record<string, string>; qdiiFunds: Record<string, boolean>; fundCategories?: Record<string, HoldingFundCategory>; syncErrors?: Record<string, string> }) {
+  const [scope, setScope] = useState<HoldingFundScope>("all");
   const [query, setQuery] = useState("");
   const [channel, setChannel] = useState<SalesChannelFilter>("all");
   const [detail, setDetail] = useState("all");
@@ -58,9 +59,9 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncEr
   const visibilityId = useId();
 
   const groups = useMemo(() => {
-    const matching = filterBySalesChannel(filterHoldingPositions(positions.filter((position) => scope === "all" || position.exposure === scope), names, query, "all"), managers, channel, detail);
-    return sortHoldingGroups(groupNasdaqHoldings(matching, names, qdiiFunds), sort);
-  }, [positions, names, managers, qdiiFunds, query, channel, detail, sort, scope]);
+    const matching = filterBySalesChannel(filterHoldingPositions(filterHoldingFundScope(positions, names, scope, fundCategories), names, query, "all"), managers, channel, detail);
+    return sortHoldingGroups(groupNasdaqHoldings(matching, names, qdiiFunds, fundCategories), sort);
+  }, [positions, names, managers, qdiiFunds, fundCategories, query, channel, detail, sort, scope]);
 
   const summary = useMemo(() => summarizeNasdaqHoldings(groups), [groups]);
   const isFiltered = channel !== "all" || query.trim().length > 0 || scope !== "all";
@@ -78,7 +79,7 @@ export function HoldingsExplorer({ positions, names, managers, qdiiFunds, syncEr
       <section aria-label="持仓总览" className="@container/overview overflow-hidden rounded-2xl border border-border bg-card shadow-[0_12px_36px_rgba(70,52,36,.055)]">
         <div className="bg-foreground px-6 py-6 text-primary-foreground @min-[40rem]/overview:px-8">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs font-medium tracking-[.16em] text-primary-foreground/60">{scope === "nasdaq" ? "纳指持仓 · 筛选结果" : scope === "fund" ? "其他基金 · 筛选结果" : isFiltered ? "基金持仓 · 筛选结果" : "基金持仓 · 组合总览"}</p>
+            <p className="text-xs font-medium tracking-[.16em] text-primary-foreground/60">{scope !== "all" ? `${HOLDING_FUND_LABELS[scope]} · 筛选结果` : isFiltered ? "基金持仓 · 筛选结果" : "基金持仓 · 组合总览"}</p>
             <div className="flex items-center gap-2.5">
               <label htmlFor={visibilityId} className="flex cursor-pointer items-center gap-1.5 text-xs text-primary-foreground/75">
                 {showNumbers ? <Eye className="size-3.5" aria-hidden="true" /> : <EyeOff className="size-3.5" aria-hidden="true" />}显示数字
@@ -172,7 +173,7 @@ function HoldingCard({ group, fundOptions, fundManagers, syncError }: { group: H
       <div className="w-full min-w-0 pr-6 lg:min-w-48 lg:flex-1 lg:pr-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs font-medium text-copper">{group.symbol}</span>
-          {group.positions[0]?.exposure === "fund" ? <span className="rounded bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">其他基金</span> : null}
+          {group.category !== "nasdaq" ? <span className={`rounded border px-2 py-0.5 text-[10px] font-medium ${group.category === "gold" ? "border-amber-600/20 bg-amber-500/10 text-amber-800" : "border-transparent bg-muted text-muted-foreground"}`}>{HOLDING_FUND_LABELS[group.category]}</span> : null}
         </div>
         <h3 className="mt-1.5 line-clamp-2 text-base font-semibold leading-snug" title={group.name}>{group.name}</h3>
         <p className="mt-1 text-xs text-muted-foreground">{group.settledCount} 笔已确认 · {group.positions.length} 笔记录{group.navAsOf ? ` · 净值 ${group.navAsOf}` : ""}{group.unvaluedCount ? ` · ${group.unvaluedCount} 笔净值同步中` : syncError ? " · 净值更新暂缓" : ""}</p>

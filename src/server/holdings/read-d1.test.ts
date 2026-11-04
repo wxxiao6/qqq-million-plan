@@ -55,6 +55,7 @@ describe("D1 holdings page read", () => {
       expect(result.pendingNames["999992"]).toBeUndefined();
       expect(result.names["008986"]).toBe("广发上海金ETF联接A");
       expect(result.qdiiFunds).toMatchObject({ "008986": false, "016452": true, "160213": true, "999993": true });
+      expect(result.fundCategories).toMatchObject({ "008986": "gold", "016452": "nasdaq", "007721": "sp500", "999993": "fund" });
       expect(result.managers).toEqual({ ...ledger.listNasdaqHoldingManagers(), "008986": "广发基金" });
       expect(result.plans).toEqual(listDcaPlans());
       cloud.close();

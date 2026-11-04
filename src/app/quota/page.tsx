@@ -13,19 +13,13 @@ import { groupFundsByManager, isPaused, sortOtcFundGroups, type FundSort, type S
 import { estimatePurchasableQuota, sumVerifiedQuota } from "@/lib/nasdaq-quota-summary";
 import type { CatalogRow } from "@/server/funds/catalog";
 import { listNasdaqFundsForRuntime } from "@/server/funds/catalog-runtime";
+import { FUND_THEME_LABELS as THEME } from "@/lib/fund-theme";
 
 export const dynamic = "force-dynamic";
 
 function quotaTime(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
 }
-
-const THEME: Record<CatalogRow["theme"], string> = {
-  nasdaq_100: "纳指 100",
-  nasdaq_biotech: "纳指生物科技",
-  nasdaq_technology: "纳斯达克科技",
-  nasdaq_selected: "纳斯达克精选",
-};
 
 type Channel = "agency" | "direct" | "exchange";
 type FundTheme = CatalogRow["theme"];

@@ -3,18 +3,9 @@
 import { useRouter } from "next/navigation";
 import { FilterSelect } from "@/components/filter-select";
 import type { FundSort, SalesChannel } from "@/lib/nasdaq-fund-sort";
+import { FUND_THEME_LABELS, type FundTheme } from "@/lib/fund-theme";
 
-export type FundTypeFilterValue = "all" | "nasdaq_100" | "nasdaq_biotech" |
-  "nasdaq_technology" | "nasdaq_selected";
-
-type FundTheme = Exclude<FundTypeFilterValue, "all">;
-
-const TYPE_LABELS: Record<FundTheme, string> = {
-  nasdaq_100: "纳指 100",
-  nasdaq_biotech: "纳指生物科技",
-  nasdaq_technology: "纳斯达克科技",
-  nasdaq_selected: "纳斯达克精选",
-};
+export type FundTypeFilterValue = "all" | FundTheme;
 
 export function FundTypeFilter({ selected, channel, usdChannel, sort, availableTypes }: {
   selected: FundTypeFilterValue;
@@ -37,6 +28,6 @@ export function FundTypeFilter({ selected, channel, usdChannel, sort, availableT
     }}
     className="w-40 max-w-full"
     triggerClassName="data-[size=default]:h-8 rounded-md px-2.5 text-xs font-medium"
-    options={[{ value: "all", label: "全部类型" }, ...availableTypes.map((type) => ({ value: type, label: TYPE_LABELS[type] }))]}
+    options={[{ value: "all", label: "全部类型" }, ...availableTypes.map((type) => ({ value: type, label: FUND_THEME_LABELS[type] }))]}
   />;
 }

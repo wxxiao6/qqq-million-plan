@@ -26,6 +26,13 @@ describe("D1 catalog", () => {
     expect(expected.length).toBeGreaterThan(0);
     expect(expected.find((fund) => fund.code === "016452")?.directDailyLimit).toBe(123);
     expect(await listNasdaqFundsD1(d1)).toEqual(expected);
+    expect(expected.filter((fund) => fund.theme === "sp500").map((fund) => fund.code)).toEqual(["007721", "007722"]);
+    expect(db.prepare("SELECT code,is_nasdaq FROM funds WHERE code IN ('007721','007722') ORDER BY code").all()).toEqual([
+      { code: "007721", is_nasdaq: 0 }, { code: "007722", is_nasdaq: 0 },
+    ]);
+    expect(db.prepare("SELECT code FROM nav_sync_funds WHERE code IN ('007721','007722') ORDER BY code").all()).toEqual([
+      { code: "007721" }, { code: "007722" },
+    ]);
   });
 });
 

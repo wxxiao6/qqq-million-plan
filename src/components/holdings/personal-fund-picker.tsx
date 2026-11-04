@@ -1,6 +1,7 @@
 "use client";
 
 import { formatNav } from "@/lib/format";
+import { classifyHoldingFund, HOLDING_FUND_LABELS } from "@/lib/fund-category";
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Search } from "lucide-react";
@@ -47,7 +48,7 @@ export function PersonalFundPicker({ id, options, initialSymbol, selectedSymbol,
       <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-copper/10 text-copper"><Check className="size-3" aria-hidden="true" /></span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium leading-relaxed">{fund?.name ?? options[selectedSymbol] ?? "原持仓基金"}</p>
-        <p className="mt-1 text-xs text-muted-foreground"><span className="font-mono">{selectedSymbol}</span>{fund?.isNasdaq ? " · 纳指基金" : ""}</p>
+        <p className="mt-1 text-xs text-muted-foreground"><span className="font-mono">{selectedSymbol}</span> · {HOLDING_FUND_LABELS[classifyHoldingFund(fund?.name ?? options[selectedSymbol] ?? "", fund?.fundType, fund?.isNasdaq)]}</p>
       </div>
       <button type="button" className="shrink-0 rounded-md px-1 py-1 text-xs text-copper underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring" onClick={() => { ++request.current; onSelect(""); onResolved(null); setFund(null); setQuery(""); setOpen(true); setActiveIndex(0); requestAnimationFrame(() => input.current?.focus()); }}>更换</button>
     </div>

@@ -4,6 +4,7 @@ import { buildPositionDetails, LATEST_NAV_SQL, PRIOR_NAV_SQL, POSITIONS_SQL,
   mapPosition, type NavSnapshot } from "../ledger";
 import type { ReconcileD1 } from "../ledger/reconcile-d1";
 import { isQdiiFund } from "@/lib/holdings-dashboard";
+import { classifyHoldingFund } from "@/lib/fund-category";
 
 export async function readHoldingsManagementD1(db: ReconcileD1 & ReadD1) {
   const [rows, latest, prior, namesRows, fundsRows] = await db.batch([
@@ -20,5 +21,6 @@ export async function readHoldingsManagementD1(db: ReconcileD1 & ReadD1) {
   const managers = { ...Object.fromEntries(pendingFunds.filter((fund) => fund.manager).map((fund) => [fund.code, fund.manager!])), ...Object.fromEntries(funds.filter((fund) => fund.manager).map((fund) => [fund.code, fund.manager!])), ...dca.managers };
   const syncErrors = Object.fromEntries(funds.filter((fund) => fund.syncError).map((fund) => [fund.code, fund.syncError!]));
   const qdiiFunds = Object.fromEntries(funds.map((fund) => [fund.code, isQdiiFund(fund.name, fund.fundType, Boolean(fund.isNasdaq))]));
-  return { positions, names, managers, syncErrors, qdiiFunds, pendingNames, plans: dca.board.plans };
+  const fundCategories = Object.fromEntries(funds.map((fund) => [fund.code, classifyHoldingFund(fund.name, fund.fundType, Boolean(fund.isNasdaq))]));
+  return { positions, names, managers, syncErrors, qdiiFunds, fundCategories, pendingNames, plans: dca.board.plans };
 }

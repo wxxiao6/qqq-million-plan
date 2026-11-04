@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import type { FundTheme } from "@/lib/fund-theme";
 
 export const SEARCH_URL = "https://fund.eastmoney.com/data/fundsearch.html?key=%E7%BA%B3%E6%96%AF%E8%BE%BE%E5%85%8B#key%E7%BA%B3%E6%96%AF%E8%BE%BE%E5%85%8B;ztjj";
 const CATALOG = path.join(process.cwd(), "config", "nasdaq-funds.json");
@@ -9,7 +10,7 @@ const AGENCY_AUDIT = path.join(process.cwd(), "config", "nasdaq-agency-audit-202
 const SALES_AUDIT = path.join(process.cwd(), "config", "nasdaq-sales-audit-2026-09-24.tsv");
 const OBSERVED_ON = "2026-09-24";
 
-export type Theme = "nasdaq_100" | "nasdaq_biotech" | "nasdaq_technology" | "nasdaq_selected";
+export type Theme = FundTheme;
 export type ProductType = "etf" | "etf_feeder" | "index" | "active";
 export type Fund = {
   code: string;
@@ -38,12 +39,14 @@ export function classifyFund(code: string, name: string): Omit<Fund, "sourceUrl"
   const technology = /纳(?:斯达克|指)科技/.test(name);
   const selected = /纳斯达克精选/.test(name);
   const hundred = /纳斯达克100|纳指100|纳指ETF|纳斯达克ETF/.test(name);
-  if (!biotech && !technology && !selected && !hundred) return null;
+  const sp500 = /标普\s*500|S&P\s*500/i.test(name);
+  const gold = /黄金|上海金/.test(name);
+  if (!biotech && !technology && !selected && !hundred && !sp500 && !gold) return null;
   const managers = MANAGER_NAMES.filter((manager) => name.includes(manager));
   if (managers.length > 1) return null;
   const manager = managers[0] ?? (name.includes("景顺") ? "景顺长城" : null);
   if (NASDAQ_BIOTECH_CODES.has(code) && !/广发生物科技指数/.test(name)) return null;
-  const theme: Theme = biotech ? "nasdaq_biotech" : technology ? "nasdaq_technology" : selected ? "nasdaq_selected" : "nasdaq_100";
+  const theme: Theme = gold ? "gold" : sp500 ? "sp500" : biotech ? "nasdaq_biotech" : technology ? "nasdaq_technology" : selected ? "nasdaq_selected" : "nasdaq_100";
   const exchange = ETF_ALIASES.has(code) || (/ETF/.test(name) && !/联接/.test(name));
   const productType: ProductType = selected ? "active" : exchange ? "etf" : /ETF.*联接/.test(name) ? "etf_feeder" : "index";
   return {

@@ -1,6 +1,15 @@
 import { decimal, roundMoney, sumDecimal, sumMoney } from "./decimal";
 import type { PositionDetail } from "@/server/ledger";
 import { advanceWeekdays } from "./format";
+import { classifyHoldingFund, type HoldingFundCategory, type HoldingFundScope } from "./fund-category";
+
+export function holdingFundCategory(position: Pick<PositionDetail, "symbol" | "exposure">, names: Record<string, string>, categories: Record<string, HoldingFundCategory> = {}): HoldingFundCategory {
+  return categories[position.symbol] ?? classifyHoldingFund(names[position.symbol] ?? "", null, position.exposure === "nasdaq");
+}
+
+export function filterHoldingFundScope(positions: PositionDetail[], names: Record<string, string>, scope: HoldingFundScope, categories: Record<string, HoldingFundCategory> = {}): PositionDetail[] {
+  return positions.filter((position) => scope === "all" || holdingFundCategory(position, names, categories) === scope);
+}
 
 /** Nasdaq catalog names sometimes omit QDII; other funds expose it in their type or name. */
 export function isQdiiFund(name: string, fundType: string | null, isNasdaq: boolean): boolean {
@@ -24,6 +33,7 @@ export function filterHoldingPositions(positions: PositionDetail[], names: Recor
 export type HoldingGroup = {
   symbol: string;
   name: string;
+  category: HoldingFundCategory;
   isQdii: boolean;
   incomeDate: string | null;
   positions: PositionDetail[];
@@ -116,7 +126,7 @@ export function groupHoldingChannels(positions: PositionDetail[]): HoldingChanne
   });
 }
 
-export function groupNasdaqHoldings(positions: PositionDetail[], names: Record<string, string>, qdiiFunds: Record<string, boolean> = {}): HoldingGroup[] {
+export function groupNasdaqHoldings(positions: PositionDetail[], names: Record<string, string>, qdiiFunds: Record<string, boolean> = {}, categories: Record<string, HoldingFundCategory> = {}): HoldingGroup[] {
   const bySymbol = new Map<string, PositionDetail[]>();
   for (const position of positions.filter((item) => (item.exposure === "nasdaq" || item.exposure === "fund"))) {
     const rows = bySymbol.get(position.symbol) ?? [];
@@ -135,6 +145,7 @@ export function groupNasdaqHoldings(positions: PositionDetail[], names: Record<s
     return {
       symbol,
       name: names[symbol] ?? symbol,
+      category: holdingFundCategory(rows[0], names, categories),
       isQdii,
       incomeDate: fundIncomeDate(navAsOf, isQdii),
       positions: rows.sort((a, b) => Number(a.status === "pending") - Number(b.status === "pending") || a.id - b.id),
