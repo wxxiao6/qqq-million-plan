@@ -1,6 +1,6 @@
 /** Cloudflare cron expressions use UTC; product schedules use Beijing time. */
 export const JOB_CRONS = {
-  dca: "0 18 * * *",
+  dca: "5 0 * * *",
   nav: "0 10-15 * * *",
   quotaCheck: "0 23 * * *",
   info: "0 17 * * SUN",

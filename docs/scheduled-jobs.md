@@ -4,7 +4,7 @@
 
 | 任务 | 执行位置 | 时间 |
 | --- | --- | --- |
-| 定投自动记账 | Cloudflare Cron | 每日 02:00 |
+| 定投自动记账 | Cloudflare Cron | 每日 08:05（D1 每日额度重置后） |
 | 官方额度采集与校验 | 本机 Codex 自动化 `nasdaq-quota-ai-ingestion` | 每日 06:00 一次 |
 | 额度回执巡检 | Cloudflare Cron | 每日 07:00，仅检查接收情况 |
 | 基金净值 | Cloudflare Cron | 18:00–24:00，每小时一次（末次 23:00） |

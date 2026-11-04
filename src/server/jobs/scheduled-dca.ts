@@ -1,7 +1,7 @@
 import { beijingTodayISO } from "../../lib/format";
 import { reconcileDueDcaPlansD1, type ReconcileD1 } from "../ledger/reconcile-d1";
 
-/** Cloudflare Cron runs at 18:00 UTC, or 02:00 the next day in Beijing. */
+/** Cloudflare Cron runs at 00:05 UTC, or 08:05 in Beijing after D1 daily usage resets. */
 export async function runScheduledDca(db: ReconcileD1, scheduledTime: Date) {
   const bizDate = beijingTodayISO(scheduledTime);
   const errors = await reconcileDueDcaPlansD1(db, bizDate);
